@@ -37,7 +37,7 @@
         <div>
             <a href="../index.html" class="inline-flex items-center gap-1.5 text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors mb-2 w-fit">🏠 홈</a>
             <h1 class="text-xl md:text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-red-400 bg-clip-text text-transparent">🌒 월식 시뮬레이터</h1>
-            <p class="text-xs text-slate-400 mt-1">월식이 일어나는 하루 동안, 우주에서 본 지구·달의 움직임과 지구 위 관찰자가 보는 하늘을 동시에 관찰합니다. <span class="text-slate-500">(크기와 거리는 실제 비율이 아닙니다)</span></p>
+            <p class="text-xs text-slate-400 mt-1">월식이 일어나는 하루 동안, 우주에서 본 지구·달의 움직임과 지구 위 관찰자가 보는 하늘을 동시에 관찰합니다. <span class="text-slate-500">(달 크기는 지구의 0.27배 실제 비율, 지구-달 거리는 화면에 맞게 압축)</span></p>
         </div>
 
         <div class="flex flex-col lg:flex-row gap-4">
@@ -49,7 +49,7 @@
                         <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest">🛰️ 우주에서 본 모습 (북극 위에서)</h2>
                         <span class="text-[10px] text-slate-500 font-mono">지구 자전·달 공전: 시계 반대 방향</span>
                     </div>
-                    <div id="orbitWrap" class="w-full h-[300px] md:h-[380px] bg-[#020617] rounded-xl overflow-hidden">
+                    <div id="orbitWrap" class="w-full h-[340px] md:h-[460px] bg-[#020617] rounded-xl overflow-hidden">
                         <canvas id="orbitCanvas"></canvas>
                     </div>
                 </div>
@@ -265,6 +265,8 @@
         window.addEventListener('resize', resizeAll);
 
         // ===== 우주 시점 =====
+        // 북극 위에서 본 모습. 화면 좌표는 y축이 아래로 향하므로,
+        // 수학 좌표(반시계 양의 방향)를 SY로 뒤집어 그린다 → 자전·공전이 화면에서도 반시계.
         function drawOrbit(st) {
             const w = orbitCanvas.width, h = orbitCanvas.height;
             octx.clearRect(0, 0, w, h);
@@ -278,18 +280,20 @@
                 octx.fillRect(s[0] * w, s[1] * h, s[2] > 0.5 ? 1.5 : 1, 1);
             }
 
-            const cx = w * 0.44, cy = h / 2;
-            const rEarth = Math.min(w, h) * 0.085;
-            const rOrb = Math.min(w * 0.5, h / 2) - 26;
-            const rMoon = Math.max(6, rEarth * 0.27);
+            const cx = w * 0.42, cy = h / 2;
+            const rOrb = Math.min(w * 0.55, h / 2) - 22;
+            // 지구-달 거리 ≈ 지구 반지름의 12.5배로 압축 (실제 60배), 달/지구 크기비 0.27은 실제 비율
+            const rEarth = Math.max(11, rOrb * 0.08);
+            const rMoon = Math.max(3.5, rEarth * 0.27);
+            const SX = x => cx + x;
+            const SY = y => cy - y; // y축 반전: 북극 위 시점의 반시계 방향 재현
 
-            // 그림자 폭 (달 확대 화면과 같은 비율)
+            // 그림자 폭 (월식 기하와 같은 각도 비율)
             const umbW = (R_UMB_DEG / R_MOON_DEG) * rMoon;
             const penW = (R_PEN_DEG / R_MOON_DEG) * rMoon;
-            const shadowLen = rOrb + rMoon * 4;
+            const shadowLen = rOrb + rMoon * 6;
 
             // 태양 빛 (왼쪽에서)
-            const sunX = 26;
             const grad = octx.createRadialGradient(0, cy, 5, 0, cy, 130);
             grad.addColorStop(0, 'rgba(250, 204, 21, 0.6)');
             grad.addColorStop(1, 'rgba(250, 204, 21, 0)');
@@ -297,7 +301,7 @@
             octx.fillRect(0, cy - 130, 130, 260);
             octx.fillStyle = '#facc15';
             octx.font = 'bold 11px sans-serif';
-            octx.fillText('☀️ 태양 빛', sunX - 12, cy - 60);
+            octx.fillText('☀️ 태양 빛', 14, cy - 60);
             for (let i = -2; i <= 2; i++) {
                 const y = cy + i * 26;
                 octx.strokeStyle = 'rgba(250, 204, 21, 0.45)';
@@ -310,39 +314,78 @@
                 octx.stroke();
             }
 
-            // 반그림자 (퍼지는 사다리꼴)
+            // 반그림자 (퍼지는 사다리꼴) — x축 대칭이라 y반전 영향 없음
             octx.fillStyle = 'rgba(100, 116, 139, 0.13)';
             octx.beginPath();
-            octx.moveTo(cx, cy - rEarth);
-            octx.lineTo(cx + shadowLen, cy - penW);
-            octx.lineTo(cx + shadowLen, cy + penW);
-            octx.lineTo(cx, cy + rEarth);
+            octx.moveTo(SX(0), SY(rEarth));
+            octx.lineTo(SX(shadowLen), SY(penW));
+            octx.lineTo(SX(shadowLen), SY(-penW));
+            octx.lineTo(SX(0), SY(-rEarth));
             octx.closePath();
             octx.fill();
 
             // 본그림자 (좁아지는 사다리꼴)
-            octx.fillStyle = 'rgba(2, 6, 23, 0.72)';
+            octx.fillStyle = 'rgba(2, 6, 23, 0.78)';
             octx.beginPath();
-            octx.moveTo(cx, cy - rEarth);
-            octx.lineTo(cx + shadowLen, cy - umbW);
-            octx.lineTo(cx + shadowLen, cy + umbW);
-            octx.lineTo(cx, cy + rEarth);
+            octx.moveTo(SX(0), SY(rEarth));
+            octx.lineTo(SX(shadowLen), SY(umbW));
+            octx.lineTo(SX(shadowLen), SY(-umbW));
+            octx.lineTo(SX(0), SY(-rEarth));
             octx.closePath();
             octx.fill();
 
             octx.fillStyle = 'rgba(148,163,184,0.65)';
             octx.font = '10px sans-serif';
-            octx.fillText('본그림자', cx + rOrb * 0.55, cy - 4);
-            octx.fillText('반그림자', cx + rOrb * 0.55, cy - penW * 0.75);
+            octx.fillText('본그림자', SX(rOrb * 0.42), SY(4));
+            octx.fillText('반그림자', SX(rOrb * 0.42), SY(penW + 12));
 
-            // 달 궤도
-            octx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+            // 달 궤도 (전체, 흐리게)
+            octx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
             octx.lineWidth = 1;
             octx.setLineDash([4, 5]);
             octx.beginPath();
             octx.arc(cx, cy, rOrb, 0, PI2);
             octx.stroke();
             octx.setLineDash([]);
+
+            // ── 하루 동안 달이 공전하는 경로 ──
+            const orbPt = t => {
+                const a = moonAngleDeg(t) * DEG;
+                return [SX(rOrb * Math.cos(a)), SY(rOrb * Math.sin(a))];
+            };
+            // 지나온 길 (실선, 밝게)
+            octx.strokeStyle = 'rgba(251, 191, 36, 0.85)';
+            octx.lineWidth = 2;
+            octx.beginPath();
+            for (let k = 0; k <= 40; k++) {
+                const p = orbPt(T * k / 40);
+                if (k === 0) octx.moveTo(p[0], p[1]); else octx.lineTo(p[0], p[1]);
+            }
+            octx.stroke();
+            // 남은 길 (점선, 흐리게)
+            octx.strokeStyle = 'rgba(251, 191, 36, 0.3)';
+            octx.lineWidth = 1.5;
+            octx.setLineDash([3, 4]);
+            octx.beginPath();
+            for (let k = 0; k <= 40; k++) {
+                const p = orbPt(T + (24 - T) * k / 40);
+                if (k === 0) octx.moveTo(p[0], p[1]); else octx.lineTo(p[0], p[1]);
+            }
+            octx.stroke();
+            octx.setLineDash([]);
+            // 3시간 간격 눈금
+            octx.fillStyle = 'rgba(251, 191, 36, 0.7)';
+            for (let tk = 0; tk <= 24; tk += 3) {
+                const p = orbPt(tk);
+                octx.beginPath();
+                octx.arc(p[0], p[1], 2, 0, PI2);
+                octx.fill();
+            }
+            octx.font = '9px sans-serif';
+            octx.fillStyle = 'rgba(251,191,36,0.65)';
+            const p0 = orbPt(0), p24 = orbPt(24);
+            octx.fillText('12시', p0[0] + 6, p0[1] + 10);
+            octx.fillText('다음날 12시', p24[0] - 62, p24[1] + 3);
 
             // 지구 (왼쪽 = 낮, 오른쪽 = 밤)
             const eg = octx.createRadialGradient(cx - rEarth * 0.4, cy - rEarth * 0.4, rEarth * 0.2, cx, cy, rEarth);
@@ -353,7 +396,7 @@
             octx.beginPath();
             octx.arc(cx, cy, rEarth, 0, PI2);
             octx.fill();
-            // 밤 반구
+            // 밤 반구 (태양 반대쪽 = 오른쪽 절반)
             octx.fillStyle = 'rgba(2, 6, 23, 0.62)';
             octx.beginPath();
             octx.arc(cx, cy, rEarth, -Math.PI / 2, Math.PI / 2);
@@ -364,12 +407,23 @@
             octx.beginPath();
             octx.arc(cx, cy, rEarth, 0, PI2);
             octx.stroke();
+            // 자전 방향 화살표 (반시계)
+            octx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+            octx.lineWidth = 1.5;
+            octx.beginPath();
+            octx.arc(cx, cy, rEarth + 7, -0.9 * Math.PI, -0.6 * Math.PI);
+            octx.stroke();
+            const raA = -0.6 * Math.PI;
+            const rax = cx + (rEarth + 7) * Math.cos(raA), ray = cy + (rEarth + 7) * Math.sin(raA);
+            octx.beginPath();
+            octx.moveTo(rax, ray); octx.lineTo(rax - 6, ray - 3); octx.moveTo(rax, ray); octx.lineTo(rax - 2, ray - 7);
+            octx.stroke();
 
-            // 관찰자 + 동/서 방향 (자전에 따라 회전)
-            const ox = cx + rEarth * Math.cos(st.oA);
-            const oy = cy + rEarth * Math.sin(st.oA);
-            const zx = Math.cos(st.oA), zy = Math.sin(st.oA);
-            const ex = -Math.sin(st.oA), ey = Math.cos(st.oA);
+            // 관찰자 + 동/서 방향 (자전에 따라 회전, y반전 적용)
+            const ox = SX(rEarth * Math.cos(st.oA));
+            const oy = SY(rEarth * Math.sin(st.oA));
+            const zx = Math.cos(st.oA), zy = -Math.sin(st.oA);       // 화면용 천정 벡터
+            const ex = -Math.sin(st.oA), ey = -Math.cos(st.oA);      // 화면용 동쪽(자전 방향) 벡터
 
             // 지평선 (접선)
             octx.strokeStyle = 'rgba(245, 158, 11, 0.4)';
@@ -408,11 +462,11 @@
             octx.arc(ox, oy, 4, 0, PI2);
             octx.fill();
             octx.fillStyle = '#fde68a';
-            octx.fillText('관찰자', ox + zx * 16 - 16, oy + zy * 16 - 8);
+            octx.fillText('관찰자', ox + zx * 30 - 16, oy + zy * 30 - 2);
 
-            // 달
-            const mxp = cx + rOrb * Math.cos(st.mA);
-            const myp = cy + rOrb * Math.sin(st.mA);
+            // 달 (y반전 적용)
+            const mxp = SX(rOrb * Math.cos(st.mA));
+            const myp = SY(rOrb * Math.sin(st.mA));
             const ph = eclipsePhase(st.e);
             let moonColor = '#e7e5e4';
             if (ph.key === 'pen') moonColor = '#b8b5b2';
@@ -422,17 +476,97 @@
             octx.beginPath();
             octx.arc(mxp, myp, rMoon, 0, PI2);
             octx.fill();
-            octx.fillStyle = 'rgba(226,232,240,0.8)';
-            octx.fillText('달', mxp - 5, myp - rMoon - 6);
+            octx.fillStyle = 'rgba(226,232,240,0.85)';
+            octx.font = 'bold 10px sans-serif';
+            octx.fillText('달', mxp + rMoon + 5, myp + 3);
 
-            // 달 공전 방향 화살표
-            const tx = -Math.sin(st.mA), ty = Math.cos(st.mA);
-            octx.strokeStyle = 'rgba(148,163,184,0.55)';
+            // 달 공전 방향 화살표 (반시계 접선)
+            const tx = -Math.sin(st.mA), ty = -Math.cos(st.mA); // 화면용 접선
+            octx.strokeStyle = 'rgba(251, 191, 36, 0.8)';
             octx.lineWidth = 1.5;
             octx.beginPath();
-            octx.moveTo(mxp + tx * (rMoon + 9), myp + ty * (rMoon + 9));
-            octx.lineTo(mxp + tx * (rMoon + 24), myp + ty * (rMoon + 24));
+            octx.moveTo(mxp + tx * (rMoon + 6), myp + ty * (rMoon + 6));
+            octx.lineTo(mxp + tx * (rMoon + 20), myp + ty * (rMoon + 20));
             octx.stroke();
+            octx.beginPath();
+            octx.moveTo(mxp + tx * (rMoon + 20), myp + ty * (rMoon + 20));
+            octx.lineTo(mxp + tx * (rMoon + 14) + ty * 4, myp + ty * (rMoon + 14) - tx * 4);
+            octx.stroke();
+
+            // ── 돋보기: 달이 본그림자를 통과하는 모습 확대 ──
+            drawShadowInset(w, h, rOrb, rMoon, umbW, penW);
+        }
+
+        // 본그림자 통과 돋보기 (우주 시점 오른쪽 위)
+        function drawShadowInset(w, h, rOrb, rMoon, umbW, penW) {
+            const iw = Math.min(220, Math.max(170, w * 0.26));
+            const ih = Math.min(168, h * 0.38);
+            const ix = w - iw - 10, iy = 10;
+            const icx = ix + iw / 2, icy = iy + ih / 2;
+            // 하루 동안 달의 상하 이동 범위에 맞춰 배율 결정
+            const dyMax = rOrb * Math.sin(moonAngleDeg(24) * DEG) + rMoon * 1.5;
+            const Z = (ih / 2 - 10) / Math.max(dyMax, penW + rMoon);
+
+            octx.save();
+            octx.fillStyle = 'rgba(2, 6, 23, 0.92)';
+            octx.strokeStyle = 'rgba(251, 191, 36, 0.5)';
+            octx.lineWidth = 1;
+            octx.fillRect(ix, iy, iw, ih);
+            octx.strokeRect(ix, iy, iw, ih);
+            octx.beginPath();
+            octx.rect(ix, iy, iw, ih);
+            octx.clip();
+
+            // 반그림자·본그림자 띠 (달 궤도 부근에서는 거의 수평 띠로 보임)
+            octx.fillStyle = 'rgba(100, 116, 139, 0.2)';
+            octx.fillRect(ix, icy - penW * Z, iw, penW * Z * 2);
+            octx.fillStyle = 'rgba(2, 6, 23, 0.95)';
+            octx.fillRect(ix, icy - umbW * Z, iw, umbW * Z * 2);
+            octx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+            octx.setLineDash([3, 3]);
+            [umbW, -umbW, penW, -penW].forEach(yv => {
+                octx.beginPath();
+                octx.moveTo(ix, icy - yv * Z); octx.lineTo(ix + iw, icy - yv * Z);
+                octx.stroke();
+            });
+            octx.setLineDash([]);
+
+            // 달의 이동 궤적 (그림자 중심 기준 상대 좌표, y반전)
+            const rel = t => {
+                const a = moonAngleDeg(t) * DEG;
+                return [icx + (rOrb * (Math.cos(a) - 1)) * Z, icy - (rOrb * Math.sin(a)) * Z];
+            };
+            octx.strokeStyle = 'rgba(251, 191, 36, 0.7)';
+            octx.lineWidth = 1.5;
+            octx.beginPath();
+            for (let k = 0; k <= 40; k++) {
+                const p = rel(T * k / 40);
+                if (k === 0) octx.moveTo(p[0], p[1]); else octx.lineTo(p[0], p[1]);
+            }
+            octx.stroke();
+            octx.setLineDash([2, 4]);
+            octx.strokeStyle = 'rgba(251, 191, 36, 0.3)';
+            octx.beginPath();
+            for (let k = 0; k <= 40; k++) {
+                const p = rel(T + (24 - T) * k / 40);
+                if (k === 0) octx.moveTo(p[0], p[1]); else octx.lineTo(p[0], p[1]);
+            }
+            octx.stroke();
+            octx.setLineDash([]);
+
+            // 달 (월식 그림자 렌더링 재사용)
+            const mp = rel(T);
+            drawEclipsedMoon(octx, mp[0], mp[1], Math.max(6, rMoon * Z), moonAngleDeg(T));
+
+            // 라벨
+            octx.font = 'bold 9px sans-serif';
+            octx.fillStyle = 'rgba(226, 232, 240, 0.85)';
+            octx.fillText('🔍 본그림자 통과 (확대)', ix + 8, iy + 14);
+            octx.font = '8px sans-serif';
+            octx.fillStyle = 'rgba(148,163,184,0.8)';
+            octx.fillText('본그림자', ix + 8, icy + 3);
+            octx.fillText('반그림자', ix + 8, icy - (umbW + (penW - umbW) * 0.45) * Z + 3);
+            octx.restore();
         }
 
         // ===== 월식 상태의 달 그리기 (하늘 뷰 & 확대 뷰 공용) =====
