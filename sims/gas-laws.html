@@ -78,7 +78,7 @@
 
     <header class="max-w-6xl mx-auto w-full mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-            <a href="../index.html" class="inline-block text-xs text-slate-500 hover:text-slate-300 transition-colors mb-1">← 실험실 목록</a>
+            <a href="../index.html" class="inline-flex items-center gap-1.5 text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors mb-2 w-fit">🏠 홈</a>
             <div class="flex items-center gap-3">
                 <h1 class="text-3xl font-extrabold text-slate-100 tracking-tight">
                     이상 기체 법칙 시뮬레이터 <span class="text-sky-400 font-mono text-lg font-normal">v5.4</span>
@@ -116,7 +116,7 @@
                         기체 입자 실시간 시각화 창
                     </h2>
                     <div class="flex items-center gap-2">
-                        <div id="pistonStatus" class="text-xs bg-red-950/50 text-red-300 px-2.5 py-1 rounded border border-red-700/30 font-mono">🔒 피스톤 고정 제어됨</div>
+                        <div id="pistonStatus" class="text-xs bg-emerald-950/50 text-emerald-300 px-2.5 py-1 rounded border border-emerald-700/30 font-mono">🔓 피스톤 자유 이동 (온도 고정)</div>
                         <div class="text-xs bg-slate-900/90 text-slate-400 px-2 py-1 rounded font-mono border border-slate-800">N = 400</div>
                     </div>
                 </div>
@@ -151,8 +151,8 @@
             
             <!-- 모드 전환 (Boyle / Charles) -->
             <div class="flex bg-slate-950 rounded-lg p-1 border border-slate-800">
-                <button id="btnBoyle" class="flex-1 py-2 text-sm rounded-md bg-cyan-600 text-white font-bold transition-all shadow">보일 모드 (부피 고정)</button>
-                <button id="btnCharles" class="flex-1 py-2 text-sm rounded-md text-slate-400 hover:text-white transition-all">샤를 모드 (자유 피스톤)</button>
+                <button id="btnBoyle" class="flex-1 py-2 text-sm rounded-md bg-cyan-600 text-white font-bold transition-all shadow">보일 모드 (온도 고정)</button>
+                <button id="btnCharles" class="flex-1 py-2 text-sm rounded-md text-slate-400 hover:text-white transition-all">샤를 모드 (압력 고정)</button>
             </div>
 
             <!-- 시뮬레이션 통제 슬라이더 -->
@@ -161,10 +161,10 @@
 
                 <div>
                     <div class="flex justify-between text-xs mb-1 text-slate-300">
-                        <span>초기 설정 부피 (Volume)</span>
-                        <span id="volValue" class="font-mono text-cyan-400 font-bold">50 L</span>
+                        <span>외부 압력 (Pressure)</span>
+                        <span id="presValue" class="font-mono text-cyan-400 font-bold">1.0 atm</span>
                     </div>
-                    <input type="range" id="volSlider" min="20" max="100" value="50">
+                    <input type="range" id="presSlider" min="0.5" max="3" step="0.1" value="1">
                 </div>
 
                 <div>
@@ -200,24 +200,11 @@
                     </div>
                 </div>
 
-                <!-- [보일 모드] 출력 정보 -->
-                <div id="boyleDataArea" class="flex flex-col gap-4">
+                <!-- 공통 출력 정보 (두 모드 모두 자유 피스톤) -->
+                <div id="dataArea" class="flex flex-col gap-4">
                     <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800 relative overflow-hidden">
                         <div class="text-[10px] text-slate-400 mb-1">
-                            이론적 기체 압력 (P_theory = K / V)
-                        </div>
-                        <div class="flex items-end gap-1">
-                            <span id="theoryPressureReadout" class="text-3xl font-mono font-extrabold text-slate-100">1.000</span>
-                            <span class="text-xs text-slate-500 pb-1.5 font-bold">atm</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- [샤를 모드] 출력 정보 -->
-                <div id="charlesDataArea" class="flex flex-col gap-4 hidden">
-                    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800 relative overflow-hidden">
-                        <div class="text-[10px] text-slate-400 mb-1">
-                            외부 대기 압력 (P_ext)
+                            외부 압력 (P_ext)
                         </div>
                         <div class="flex items-end gap-1">
                             <span id="extPressureReadout" class="text-3xl font-mono font-extrabold text-slate-100">1.000</span>
@@ -245,7 +232,7 @@
                         <span id="measuredPressureReadout" class="text-3xl font-mono font-extrabold text-emerald-400">1.000</span>
                         <span class="text-xs text-emerald-500 pb-1.5 font-bold">atm</span>
                     </div>
-                    <div class="text-[9px] text-emerald-600/70 mt-1.5">※ 매초 사방 벽면에 가해진 실제 물리 충격량의 총합</div>
+                    <div id="avgStatus" class="text-[9px] text-emerald-600/70 mt-1.5">⏳ 피스톤 이동 중 — 실시간 값</div>
                 </div>
 
                 <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
@@ -278,26 +265,24 @@
         const btnBoyle = document.getElementById('btnBoyle');
         const btnCharles = document.getElementById('btnCharles');
         
-        const volSlider = document.getElementById('volSlider');
+        const presSlider = document.getElementById('presSlider');
         const tempSlider = document.getElementById('tempSlider');
-        const volValue = document.getElementById('volValue');
+        const presValue = document.getElementById('presValue');
         const tempValue = document.getElementById('tempValue');
         const frictionToggle = document.getElementById('frictionToggle');
-        
+
         const rawKinetic = document.getElementById('rawKinetic');
         const rawAvgSpeed = document.getElementById('rawAvgSpeed');
         const rawVolume = document.getElementById('rawVolume');
         const theoryVolumeReadout = document.getElementById('theoryVolumeReadout');
-        const theoryPressureReadout = document.getElementById('theoryPressureReadout');
         const measuredPressureReadout = document.getElementById('measuredPressureReadout');
         const extPressureReadout = document.getElementById('extPressureReadout');
+        const avgStatus = document.getElementById('avgStatus');
         const cpsReadout = document.getElementById('cpsReadout');
         const fpsCounter = document.getElementById('fpsCounter');
         const bypassRate = document.getElementById('bypassRate');
-        
-        const boyleDataArea = document.getElementById('boyleDataArea');
-        const charlesDataArea = document.getElementById('charlesDataArea');
-        const pistonStatus = document.getElementById('pistonStatus'); 
+
+        const pistonStatus = document.getElementById('pistonStatus');
 
         let currentMode = 'boyle';
         let particles = [];
@@ -318,8 +303,29 @@
 
         let physics = {
             volume: 50,
-            temperature: 300
+            temperature: 300,
+            targetPressure: 1.0 // 외부 압력 (atm) — 보일 모드의 조작변인
         };
+
+        // 평형(피스톤 정지) 감지 및 평형 후 실측 압력 누적 평균.
+        // 속도 대신 60프레임 동안의 위치 변화량으로 판정한다 — 감쇠로 인한
+        // 느린 포복(creep) 구간에서 속도만 보면 조기 평형 판정이 나기 때문.
+        let settled = false;
+        let settleRefX = 0;
+        let settleTick = 0;
+        let stableWindows = 0;
+        let settledPressureSum = 0;
+        let settledSampleCount = 0;
+
+        function resetEquilibrium() {
+            settled = false;
+            settleTick = 0;
+            stableWindows = 0;
+            settleRefX = pistonX;
+            settledPressureSum = 0;
+            settledSampleCount = 0;
+            avgStatus.innerText = '⏳ 피스톤 이동 중 — 실시간 값';
+        }
 
         let simWidth, simHeight;
         let margin = 20;
@@ -344,7 +350,6 @@
         let currentVolumeL = 50.0;
         let currentTheoryVolumeL = 50.0;
         let currentMeasuredP = 1.0;
-        let currentTheoryP = 1.0;
 
         // [동적 캘리브레이션 기법] 초기 표준상태(N=400, T=300, V=50) 기준을 1.000 atm으로 절대적 영점 설정
         function updatePhysicsScales() {
@@ -363,8 +368,8 @@
             // 1.000 atm이 나오도록 캘리브레이션 팩터 절대 고정
             pressureCalibrationFactor = 1.0 / refRawPressure;
 
-            // 대기압 평형을 유지하기 위한 외력은 1.000 atm 압력을 만드는 절대값으로 세팅
-            externalForcePerFrame = (1.0 / pressureCalibrationFactor) * boxHeight; 
+            // 피스톤을 미는 외력: 설정된 외부 압력(atm)에 해당하는 절대값
+            externalForcePerFrame = (physics.targetPressure / pressureCalibrationFactor) * boxHeight;
         }
 
         function resizeCanvas() {
@@ -378,9 +383,7 @@
             grid = Array.from({ length: gridCols }, () => Array.from({ length: gridRows }, () => []));
             
             updatePhysicsScales();
-            if(currentMode === 'boyle') {
-                updatePistonPositionKinematic();
-            }
+            updatePistonPositionKinematic();
 
             // 로드 시점에 컨테이너 크기가 0이었으면 입자 생성이 건너뛰어진다.
             // 크기가 잡힌 뒤 처음 호출될 때 여기서 만들어 준다.
@@ -402,7 +405,8 @@
         class Particle {
             constructor(id) {
                 this.id = id; // 연산 가속을 위한 순차 정수 ID
-                this.radius = 3.5;
+                // 반지름이 크면 배제 부피(반데르발스) 효과가 과해져 보일 법칙에서 크게 벗어난다
+                this.radius = 2.0;
                 this.mass = 1.0;
                 
                 const angle = Math.random() * PI2;
@@ -470,10 +474,8 @@
                         const impulse = 2 * this.mass * Math.abs(this.vx);
                         accumulatedImpulse += impulse;
                         
-                        // 자유 피스톤 운동가속 (F*dt = m*dv)
-                        if (currentMode === 'charles') {
-                            pistonVx += impulse / pistonMass;
-                        }
+                        // 자유 피스톤 운동가속 (F*dt = m*dv) — 두 모드 모두 적용
+                        pistonVx += impulse / pistonMass;
 
                         this.vx = -Math.abs(this.vx);
                         this.baseVx = -Math.abs(this.baseVx);
@@ -599,34 +601,38 @@
             pistonX = margin + (maxBoxWidth * (physics.volume / 100));
         }
 
-        volSlider.addEventListener('input', (e) => {
-            if (currentMode === 'boyle') {
-                physics.volume = parseFloat(e.target.value);
-                volValue.innerText = `${physics.volume.toFixed(0)} L`;
-                updatePistonPositionKinematic();
-            }
+        presSlider.addEventListener('input', (e) => {
+            physics.targetPressure = parseFloat(e.target.value);
+            presValue.innerText = `${physics.targetPressure.toFixed(1)} atm`;
+            updatePhysicsScales();   // 외력 재계산
+            resetEquilibrium();      // 조작변인이 바뀌면 평형 평균을 다시 시작
         });
 
         tempSlider.addEventListener('input', (e) => {
             physics.temperature = parseFloat(e.target.value);
             tempValue.innerText = `${physics.temperature.toFixed(0)} K`;
             particles.forEach(p => p.updateSpeed());
+            resetEquilibrium();
         });
+
+        frictionToggle.addEventListener('change', resetEquilibrium);
 
         function setMode(mode) {
             currentMode = mode;
             physics.volume = 50;
             physics.temperature = 300;
-            volSlider.value = 50;
+            physics.targetPressure = 1.0;
+            presSlider.value = 1;
             tempSlider.value = 300;
-            volValue.innerText = `50 L`;
+            presValue.innerText = `1.0 atm`;
             tempValue.innerText = `300 K`;
-            
-            pistonVx = 0; 
+
+            pistonVx = 0;
             updatePistonPositionKinematic();
             particles.forEach(p => p.updateSpeed());
             updatePhysicsScales();
-            
+            resetEquilibrium();
+
             // 모드 전환 시 그래프 데이터 리셋
             graphHistory = {};
             chartBaseDirty = true;
@@ -634,28 +640,23 @@
             if (mode === 'boyle') {
                 btnBoyle.className = "flex-1 py-2 text-sm rounded-md bg-cyan-600 text-white font-bold transition-all shadow";
                 btnCharles.className = "flex-1 py-2 text-sm rounded-md text-slate-400 hover:text-white bg-slate-950 border-0";
-                volSlider.disabled = false;
+                presSlider.disabled = false;
                 tempSlider.disabled = true;
-                volSlider.parentElement.style.opacity = "1";
+                presSlider.parentElement.style.opacity = "1";
                 tempSlider.parentElement.style.opacity = "0.4";
-                
-                boyleDataArea.classList.remove('hidden');
-                charlesDataArea.classList.add('hidden');
-                pistonStatus.innerText = "🔒 피스톤 고정 제어됨";
-                pistonStatus.className = "text-xs bg-red-950/50 text-red-300 px-2.5 py-1 rounded border border-red-700/30 font-mono";
+
+                pistonStatus.innerText = "🔓 피스톤 자유 이동 (온도 300K 고정)";
             } else {
                 btnCharles.className = "flex-1 py-2 text-sm rounded-md bg-blue-600 text-white font-bold transition-all shadow";
                 btnBoyle.className = "flex-1 py-2 text-sm rounded-md text-slate-400 hover:text-white bg-slate-950 border-0";
-                volSlider.disabled = true;
+                presSlider.disabled = true;
                 tempSlider.disabled = false;
-                volSlider.parentElement.style.opacity = "0.4";
+                presSlider.parentElement.style.opacity = "0.4";
                 tempSlider.parentElement.style.opacity = "1";
-                
-                charlesDataArea.classList.remove('hidden');
-                boyleDataArea.classList.add('hidden');
-                pistonStatus.innerText = "🔓 피스톤 자유 이동 (대기압 평형)";
-                pistonStatus.className = "text-xs bg-emerald-950/50 text-emerald-300 px-2.5 py-1 rounded border border-emerald-700/30 font-mono";
+
+                pistonStatus.innerText = "🔓 피스톤 자유 이동 (압력 1atm 고정)";
             }
+            pistonStatus.className = "text-xs bg-emerald-950/50 text-emerald-300 px-2.5 py-1 rounded border border-emerald-700/30 font-mono";
         }
 
         btnBoyle.addEventListener('click', () => setMode('boyle'));
@@ -719,14 +720,14 @@
             const actualTop = paddingTop + (availHeight - plotSize) / 2;
 
             const isBoyle = (currentMode === 'boyle');
-            // 물리축 스케일: Boyle X=부피(0~100L)/Y=압력(0~4atm), Charles X=온도(0~600K)/Y=부피(0~120L)
+            // 물리축 스케일: Boyle X=압력(0~3.5atm)/Y=부피(0~120L), Charles X=온도(0~600K)/Y=부피(0~120L)
             return {
                 plotSize, actualLeft, actualTop,
                 actualBottom: actualTop + plotSize,
                 actualRight: actualLeft + plotSize,
                 isBoyle,
-                xMin: 0, xMax: isBoyle ? 100 : 600,
-                yMin: 0, yMax: isBoyle ? 4.0 : 120
+                xMin: 0, xMax: isBoyle ? 3.5 : 600,
+                yMin: 0, yMax: 120
             };
         }
 
@@ -753,8 +754,8 @@
             gCtx.fillStyle = '#94a3b8';
             gCtx.font = isExport ? 'bold 12px Inter, sans-serif' : '10px Inter, sans-serif';
             
-            const xUnit = isBoyle ? 'L' : 'K';
-            const yUnit = isBoyle ? 'atm' : 'L';
+            const xUnit = isBoyle ? 'atm' : 'K';
+            const yUnit = 'L';
             
             // Y축 그리드 & 라벨링 (정사각형 플롯 크기 기반)
             const ySteps = 4;
@@ -771,7 +772,7 @@
                     gCtx.stroke();
                     gCtx.setLineDash([]);
                 }
-                gCtx.fillText(yVal.toFixed(isBoyle ? 1 : 0) + ' ' + yUnit, actualLeft - 50, yPos + 4);
+                gCtx.fillText(yVal.toFixed(0) + ' ' + yUnit, actualLeft - 50, yPos + 4);
             }
             
             // X축 그리드 & 라벨링 (정사각형 플롯 크기 기반)
@@ -789,24 +790,24 @@
                     gCtx.stroke();
                     gCtx.setLineDash([]);
                 }
-                gCtx.fillText(xVal.toFixed(0) + ' ' + xUnit, xPos - 12, actualBottom + 18);
+                gCtx.fillText(xVal.toFixed(isBoyle ? 1 : 0) + ' ' + xUnit, xPos - 12, actualBottom + 18);
             }
             
             // 축 레이블 타이틀 (정사각형 플롯 하단 및 좌측에 정밀 배치)
             gCtx.fillStyle = '#64748b';
             gCtx.font = 'bold 10px Inter, sans-serif';
-            gCtx.fillText(`[X축] 조작변인: ${isBoyle ? '부피 (Volume)' : '온도 (Temperature)'}`, actualLeft + 5, h - 15);
+            gCtx.fillText(`[X축] 조작변인: ${isBoyle ? '압력 (Pressure)' : '온도 (Temperature)'}`, actualLeft + 5, h - 15);
             
             gCtx.save();
             gCtx.translate(actualLeft - 54, actualTop + (plotSize / 2) + 50);
             gCtx.rotate(-Math.PI / 2);
-            gCtx.fillText(`[Y축] 종속변인: ${isBoyle ? '압력 (Pressure)' : '부피 (Volume)'}`, 0, 0);
+            gCtx.fillText(`[Y축] 종속변인: 부피 (Volume)`, 0, 0);
             gCtx.restore();
             
             // 4. 타이틀 및 레전드(범례) 드로잉
             gCtx.fillStyle = '#f1f5f9';
             gCtx.font = isExport ? 'bold 14px Inter, sans-serif' : '11px Inter, sans-serif';
-            const titleText = isBoyle ? '보일의 법칙 과학 그래프 (P vs V)' : '샤를의 법칙 과학 그래프 (V vs T)';
+            const titleText = isBoyle ? '보일의 법칙 과학 그래프 (V vs P)' : '샤를의 법칙 과학 그래프 (V vs T)';
             gCtx.fillText(titleText, actualLeft, 24);
             
             const primaryColor = isBoyle ? '#10b981' : '#38bdf8'; // 실측값: 초록(보일) / 파랑(샤를)
@@ -816,19 +817,19 @@
             gCtx.fillRect(w - 200, 12, 10, 10);
             gCtx.fillStyle = '#94a3b8';
             gCtx.font = '10px Inter, sans-serif';
-            gCtx.fillText(isBoyle ? '실측 압력 (P_int)' : '실제 기체 부피 (V_act)', w - 185, 21);
+            gCtx.fillText('실제 기체 부피 (V_act)', w - 185, 21);
             
             gCtx.fillStyle = secondaryColor;
             gCtx.fillRect(w - 95, 12, 10, 10);
             gCtx.fillStyle = '#94a3b8';
-            gCtx.fillText(isBoyle ? '이론 압력' : '이론적 부피', w - 80, 21);
+            gCtx.fillText('이론적 부피', w - 80, 21);
 
             // 5. 스윕 궤적 곡선 그리기 (정사각형 픽셀 단위로 환산)
             const keys = Object.keys(graphHistory).map(Number).sort((a, b) => a - b);
             if (keys.length < 2) {
                 gCtx.fillStyle = '#475569';
                 gCtx.font = '11px Inter, sans-serif';
-                gCtx.fillText('슬라이더를 조절하여 그래프 영역에 곡선을 그려보세요!', actualLeft + (plotSize / 2) - 130, h / 2);
+                gCtx.fillText('슬라이더를 조절하고 피스톤이 멈추면 곡선이 기록됩니다!', actualLeft + (plotSize / 2) - 130, h / 2);
                 return;
             }
             
@@ -838,7 +839,7 @@
             gCtx.beginPath();
             keys.forEach((x, idx) => {
                 const data = graphHistory[x];
-                const y = isBoyle ? data.yTheo : data.theoryV;
+                const y = data.theoryV;
                 const px = actualLeft + ((x - xMin) / (xMax - xMin)) * plotSize;
                 const py = actualBottom - ((y - yMin) / (yMax - yMin)) * plotSize;
                 
@@ -853,7 +854,7 @@
             gCtx.beginPath();
             keys.forEach((x, idx) => {
                 const data = graphHistory[x];
-                const y = isBoyle ? data.yMeas : data.actualV;
+                const y = data.actualV;
                 const px = actualLeft + ((x - xMin) / (xMax - xMin)) * plotSize;
                 const py = actualBottom - ((y - yMin) / (yMax - yMin)) * plotSize;
                 
@@ -870,8 +871,8 @@
             if (Object.keys(graphHistory).length < 2) return;
 
             const { plotSize, actualLeft, actualBottom, isBoyle, xMin, xMax, yMin, yMax } = layout;
-            const curX = isBoyle ? physics.volume : physics.temperature;
-            const curY = isBoyle ? currentMeasuredP : currentVolumeL;
+            const curX = isBoyle ? physics.targetPressure : physics.temperature;
+            const curY = currentVolumeL;
             if (isNaN(curX) || isNaN(curY)) return;
 
             const px = actualLeft + ((curX - xMin) / (xMax - xMin)) * plotSize;
@@ -927,6 +928,12 @@
                 resizeChartCanvas();
             }
 
+            // 크기가 아직 없으면 물리 연산이 쓰레기 값을 만들므로 이번 프레임은 건너뛴다
+            if (!simWidth) {
+                animationId = requestAnimationFrame(animate);
+                return;
+            }
+
             frameCount++;
             elapsedFramesForPressure++;
             
@@ -942,26 +949,43 @@
                 for (let i = 0; i < particles.length; i++) particles[i].constrainToWalls();
             }
 
-            // 피스톤 역학 연산 (샤를 모드)
-            if (currentMode === 'charles') {
-                pistonVx -= externalForcePerFrame / pistonMass;
-                
-                if(frictionToggle.checked) {
-                    pistonVx *= 0.96; // 현실과 완벽히 동치인 점성 마찰 감쇠력
+            // 피스톤 역학 연산 (두 모드 모두 자유 피스톤: 외부 압력 vs 기체 압력)
+            pistonVx -= externalForcePerFrame / pistonMass;
+
+            if (frictionToggle.checked) {
+                pistonVx *= 0.98; // 임계감쇠에 가까운 점성 마찰 — 진동 없이 가장 빠르게 수렴
+            }
+
+            pistonX += pistonVx;
+
+            const maxBoxWidth = simWidth - margin * 2;
+            const minPistonX = margin + (maxBoxWidth * 0.1);
+            const maxPistonX = margin + maxBoxWidth;
+
+            if (pistonX <= minPistonX) { pistonX = minPistonX; pistonVx = Math.abs(pistonVx)*0.5; }
+            if (pistonX > maxPistonX) { pistonX = maxPistonX; pistonVx = -Math.abs(pistonVx)*0.5; }
+
+            physics.volume = ((pistonX - margin) / maxBoxWidth) * 100;
+
+            // 평형 감지: 60프레임 창에서 피스톤 위치 변화가 4px 미만인 상태가
+            // 2번 연속되면 정지로 판정한다 (고온에서 커지는 입자 충돌 잔떨림 허용)
+            settleTick++;
+            if (settleTick >= 60) {
+                const drift = Math.abs(pistonX - settleRefX);
+                if (drift < 4) {
+                    stableWindows++;
+                    if (!settled && stableWindows >= 2) {
+                        settled = true;
+                        settledPressureSum = 0;
+                        settledSampleCount = 0;
+                    }
+                } else {
+                    stableWindows = 0;
+                    // 큰 교란(마찰 해제 후 진동, 급격한 조작)이 오면 평형 해제
+                    if (settled && drift > 12) resetEquilibrium();
                 }
-
-                pistonX += pistonVx;
-
-                const maxBoxWidth = simWidth - margin * 2;
-                const minPistonX = margin + (maxBoxWidth * 0.2);
-                const maxPistonX = margin + maxBoxWidth;
-
-                if (pistonX <= minPistonX) { pistonX = minPistonX; pistonVx = Math.abs(pistonVx)*0.5; }
-                if (pistonX > maxPistonX) { pistonX = maxPistonX; pistonVx = -Math.abs(pistonVx)*0.5; }
-
-                physics.volume = ((pistonX - margin) / maxBoxWidth) * 100;
-                volSlider.value = physics.volume;
-                volValue.innerText = `${physics.volume.toFixed(0)} L`;
+                settleRefX = pistonX;
+                settleTick = 0;
             }
 
             // 피스톤에 쓸려 밀린 입자들의 물리 좌표 뭉침 해소
@@ -1017,45 +1041,41 @@
                 const forcePerFrame = accumulatedImpulse / elapsedFramesForPressure;
                 const rawMeasuredPressure = forcePerFrame / perimeter;
                 currentMeasuredP = rawMeasuredPressure * pressureCalibrationFactor;
-                measuredPressureReadout.innerText = currentMeasuredP.toFixed(3);
 
-                if (currentMode === 'boyle') {
-                    // 보일 모드: 이론 기체 압력 계산
-                    const rawTheoryPressure = totalKinetic / currentArea;
-                    currentTheoryP = rawTheoryPressure * pressureCalibrationFactor;
-                    theoryPressureReadout.innerText = currentTheoryP.toFixed(3);
-                    
-                    // X축 조작변인인 현재 '부피(Volume)'를 인덱스로 삼아 데이터 매핑 저장
-                    const roundedVol = Math.round(physics.volume);
-                    graphHistory[roundedVol] = {
-                        yMeas: currentMeasuredP,
-                        yTheo: currentTheoryP
-                    };
-                    
-                    // 현재 점 플로팅 정보 연계
-                    currentVolumeL = physics.volume;
+                // 평형 후에는 매초 측정값을 전체 누적 평균으로 표시 — 시간이 지날수록 한 값으로 수렴
+                if (settled) {
+                    settledPressureSum += currentMeasuredP;
+                    settledSampleCount++;
+                    measuredPressureReadout.innerText = (settledPressureSum / settledSampleCount).toFixed(3);
+                    avgStatus.innerText = `✅ 평형 도달 — ${settledSampleCount}초 누적 평균 (점점 한 값으로 수렴합니다)`;
                 } else {
-                    // 샤를 모드: 대기압 및 부피 평형 측정
-                    const rawExtPressure = externalForcePerFrame / boxHeight;
-                    const extPressure = rawExtPressure * pressureCalibrationFactor;
-                    extPressureReadout.innerText = extPressure.toFixed(3);
-                    
-                    // 픽셀 단위 면적을 "L" 단위로 정밀 매핑하기 위한 계수 연산
-                    const maxBoxWidth = simWidth - margin * 2;
-                    const areaToL = 100 / (boxHeight * maxBoxWidth);
-                    
-                    // 실제 부피 (L)
-                    currentVolumeL = currentArea * areaToL;
-                    rawVolume.innerText = currentVolumeL.toFixed(1) + " L";
-                    
-                    // 이론 부피 (L)
-                    const theoryVolumePixels = totalKinetic / rawExtPressure;
-                    currentTheoryVolumeL = theoryVolumePixels * areaToL;
-                    theoryVolumeReadout.innerText = currentTheoryVolumeL.toFixed(1) + " L";
-                    
-                    // X축 조작변인인 현재 '온도(Temperature)'를 인덱스로 삼아 데이터 매핑 저장
-                    const roundedTemp = Math.round(physics.temperature);
-                    graphHistory[roundedTemp] = {
+                    measuredPressureReadout.innerText = currentMeasuredP.toFixed(3);
+                    avgStatus.innerText = '⏳ 피스톤 이동 중 — 실시간 값';
+                }
+
+                // 3. 두 모드 공통: 외부 압력과 평형 부피 측정
+                const rawExtPressure = externalForcePerFrame / boxHeight;
+                extPressureReadout.innerText = (rawExtPressure * pressureCalibrationFactor).toFixed(2);
+
+                // 픽셀 단위 면적을 "L" 단위로 매핑
+                const maxBoxWidth2 = simWidth - margin * 2;
+                const areaToL = 100 / (boxHeight * maxBoxWidth2);
+
+                // 실제 부피 (L)
+                currentVolumeL = currentArea * areaToL;
+                rawVolume.innerText = currentVolumeL.toFixed(1) + " L";
+
+                // 이론 부피 (L)
+                const theoryVolumePixels = totalKinetic / rawExtPressure;
+                currentTheoryVolumeL = theoryVolumePixels * areaToL;
+                theoryVolumeReadout.innerText = currentTheoryVolumeL.toFixed(1) + " L";
+
+                // 그래프 기록은 평형 상태에서만 — 조작변인: 보일=외부 압력, 샤를=온도
+                if (settled) {
+                    const xKey = (currentMode === 'boyle')
+                        ? Math.round(physics.targetPressure * 10) / 10
+                        : Math.round(physics.temperature);
+                    graphHistory[xKey] = {
                         actualV: currentVolumeL,
                         theoryV: currentTheoryVolumeL
                     };
