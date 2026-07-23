@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>가스 법칙 시뮬레이션 (순수 물리 코어 및 그래프 내보내기)</title>
+    <title>이상 기체 법칙 시뮬레이터</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -78,6 +78,7 @@
 
     <header class="max-w-6xl mx-auto w-full mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
+            <a href="../index.html" class="inline-block text-xs text-slate-500 hover:text-slate-300 transition-colors mb-1">← 실험실 목록</a>
             <div class="flex items-center gap-3">
                 <h1 class="text-3xl font-extrabold text-slate-100 tracking-tight">
                     이상 기체 법칙 시뮬레이터 <span class="text-sky-400 font-mono text-lg font-normal">v5.4</span>
@@ -254,7 +255,7 @@
 
                 <!-- 안내 경고 문구 -->
                 <div class="text-[9px] text-slate-500 leading-relaxed bg-slate-950 p-3 rounded-xl border border-slate-900/80">
-                    <strong>💡 과학적 팁:</strong> 실측 압력은 필터 없이 날것으로 흐르므로 자연계의 입자처럼 요동칩니다. 부피를 극도로 줄이면 입자들이 서로 충돌하는 횟수가 밀집해 실측 부피가 이론(이상기체)보다 약간 커지는데, 이는 실제 기체(Real Gas)의 반데르발스 반경 효과를 완벽히 모사하는 자연스러운 증거입니다.
+                    <strong>💡 과학적 팁:</strong> 실측 압력은 보정 없이 입자 충돌에서 직접 계산되므로 실제 기체 분자처럼 요동칩니다. 부피를 극도로 줄이면 입자 자신이 차지하는 부피(배제 부피)의 영향으로 측정값이 이상 기체 이론값에서 벗어나기 시작하는데, 실제 기체(Real Gas)에서도 고압에서 이와 비슷한 편차가 나타납니다.
                 </div>
             </div>
         </section>
@@ -380,6 +381,12 @@
             if(currentMode === 'boyle') {
                 updatePistonPositionKinematic();
             }
+
+            // 로드 시점에 컨테이너 크기가 0이었으면 입자 생성이 건너뛰어진다.
+            // 크기가 잡힌 뒤 처음 호출될 때 여기서 만들어 준다.
+            if (particles.length === 0 && simWidth > 0) {
+                initParticles();
+            }
         }
 
         function resizeChartCanvas() {
@@ -422,6 +429,7 @@
                 this.x += this.vx;
                 this.y += this.vy;
             }
+            // (개별 draw()는 제거 — animate()에서 단일 패스로 일괄 렌더링한다)
 
             // 오직 벽을 향해 날아가는 경우에만 순수 충격량(2mv) 계산
             constrainToWalls() {
@@ -474,12 +482,6 @@
                 }
             }
 
-            draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, PI2);
-                ctx.fillStyle = '#60a5fa'; 
-                ctx.fill();
-            }
         }
 
         function initParticles() {
@@ -538,8 +540,8 @@
                 const minY = gy > 0 ? gy - 1 : 0;
                 const maxY = gy < gridRows - 1 ? gy + 1 : gridRows - 1;
 
-                for (let x = minX; x <= Math.min(gridCols - 1, gx + 1); x++) {
-                    for (let y = Math.max(0, gy - 1); y <= Math.min(gridRows - 1, gy + 1); y++) {
+                for (let x = minX; x <= maxX; x++) {
+                    for (let y = minY; y <= maxY; y++) {
                         const cellParticles = grid[x][y];
                         for (let j = 0; j < cellParticles.length; j++) {
                             const other = cellParticles[j];
@@ -559,34 +561,36 @@
         function checkCollision(p1, p2) {
             let dx = p2.x - p1.x;
             let dy = p2.y - p1.y;
-            let dist = Math.sqrt(dx * dx + dy * dy);
             const minDist = p1.radius + p2.radius;
+            const distSq = dx * dx + dy * dy;
 
-            if (dist < minDist) {
-                if (dist === 0) { 
-                    dx = 0.1; dy = 0.1; dist = Math.sqrt(dx * dx + dy * dy); 
-                }
-                const overlap = minDist - dist;
-                const nx = dx / dist; const ny = dy / dist;
-                
-                const sep = (overlap / 2) + 0.005; 
-                p1.x -= nx * sep; p1.y -= ny * sep;
-                p2.x += nx * sep; p2.y += ny * sep;
+            // 대부분의 쌍은 여기서 조기 종료된다 (제곱 비교로 sqrt 회피)
+            if (distSq >= minDist * minDist) return;
 
-                const dvx = p2.vx - p1.vx; const dvy = p2.vy - p1.vy;
-                const velAlongNormal = dvx * nx + dvy * ny;
-                if (velAlongNormal > 0) return;
-
-                const j = -2 * velAlongNormal / 2;
-                const impulseX = j * nx; const impulseY = j * ny;
-
-                p1.vx -= impulseX; p1.vy -= impulseY;
-                p2.vx += impulseX; p2.vy += impulseY;
-
-                const speedMultiplier = Math.sqrt(physics.temperature / 100) * 2.5;
-                p1.baseVx = p1.vx / speedMultiplier; p1.baseVy = p1.vy / speedMultiplier;
-                p2.baseVx = p2.vx / speedMultiplier; p2.baseVy = p2.vy / speedMultiplier;
+            let dist = Math.sqrt(distSq);
+            if (dist === 0) {
+                dx = 0.1; dy = 0.1; dist = Math.sqrt(dx * dx + dy * dy);
             }
+            const overlap = minDist - dist;
+            const nx = dx / dist; const ny = dy / dist;
+
+            const sep = (overlap / 2) + 0.005;
+            p1.x -= nx * sep; p1.y -= ny * sep;
+            p2.x += nx * sep; p2.y += ny * sep;
+
+            const dvx = p2.vx - p1.vx; const dvy = p2.vy - p1.vy;
+            const velAlongNormal = dvx * nx + dvy * ny;
+            if (velAlongNormal > 0) return;
+
+            const j = -2 * velAlongNormal / 2;
+            const impulseX = j * nx; const impulseY = j * ny;
+
+            p1.vx -= impulseX; p1.vy -= impulseY;
+            p2.vx += impulseX; p2.vy += impulseY;
+
+            const speedMultiplier = Math.sqrt(physics.temperature / 100) * 2.5;
+            p1.baseVx = p1.vx / speedMultiplier; p1.baseVy = p1.vy / speedMultiplier;
+            p2.baseVx = p2.vx / speedMultiplier; p2.baseVy = p2.vy / speedMultiplier;
         }
 
         function updatePistonPositionKinematic() {
@@ -625,6 +629,7 @@
             
             // 모드 전환 시 그래프 데이터 리셋
             graphHistory = {};
+            chartBaseDirty = true;
 
             if (mode === 'boyle') {
                 btnBoyle.className = "flex-1 py-2 text-sm rounded-md bg-cyan-600 text-white font-bold transition-all shadow";
@@ -659,6 +664,7 @@
         // 그래프 청소 리스너
         btnClearGraph.addEventListener('click', () => {
             graphHistory = {};
+            chartBaseDirty = true;
         });
 
         // 그래프 이미지 다운로드 (JPG)
@@ -696,29 +702,41 @@
             ctx.fillRect(pistonX, margin - 2, 10, simHeight - margin * 2 + 4);
         }
 
-        // [그래프 렌더링 통합 모듈] - 실시간 화면 뷰 및 JPG 다운로드 캔버스 양쪽 모두 지원 (과학적 인과관계 축)
-        function drawGraphToCanvas(gCtx, w, h, isExport = false) {
-            // 1. 배경 클리어 및 페인팅
-            gCtx.fillStyle = '#050811';
-            gCtx.fillRect(0, 0, w, h);
-            
-            // 그래프의 축 정교함을 위해 패딩 조정
+        // [그래프 렌더링 모듈] 정적 레이어(축·격자·곡선)와 실시간 점을 분리해
+        // 매 프레임에는 캐시된 레이어 위에 박동 점만 다시 그린다.
+        function computeGraphLayout(w, h) {
             const paddingLeft = 70;
             const paddingRight = 40;
             const paddingTop = 45;
             const paddingBottom = 60;
-            
+
             const availWidth = w - paddingLeft - paddingRight;
             const availHeight = h - paddingTop - paddingBottom;
-            
-            // 🌟 [핵심 변경] X축과 Y축의 물리적 길이를 언제나 정확히 같게 1:1 정사각형 플롯(Plot Size) 처리
+
+            // X축과 Y축의 픽셀 길이를 언제나 같게 1:1 정사각형 플롯 처리
             const plotSize = Math.min(availWidth, availHeight);
-            
-            // 그래프 전체 패널 내부에서 정사각형 플롯이 완벽히 중앙에 배치되도록 오프셋 계산
             const actualLeft = paddingLeft + (availWidth - plotSize) / 2;
             const actualTop = paddingTop + (availHeight - plotSize) / 2;
-            const actualBottom = actualTop + plotSize;
-            const actualRight = actualLeft + plotSize;
+
+            const isBoyle = (currentMode === 'boyle');
+            // 물리축 스케일: Boyle X=부피(0~100L)/Y=압력(0~4atm), Charles X=온도(0~600K)/Y=부피(0~120L)
+            return {
+                plotSize, actualLeft, actualTop,
+                actualBottom: actualTop + plotSize,
+                actualRight: actualLeft + plotSize,
+                isBoyle,
+                xMin: 0, xMax: isBoyle ? 100 : 600,
+                yMin: 0, yMax: isBoyle ? 4.0 : 120
+            };
+        }
+
+        function drawGraphBase(gCtx, w, h, isExport, layout) {
+            const { plotSize, actualLeft, actualTop, actualBottom, actualRight,
+                    isBoyle, xMin, xMax, yMin, yMax } = layout;
+
+            // 1. 배경 클리어 및 페인팅
+            gCtx.fillStyle = '#050811';
+            gCtx.fillRect(0, 0, w, h);
             
             // 2. 가로축 & 세로축 선 드로잉
             gCtx.strokeStyle = '#334155';
@@ -734,16 +752,6 @@
             gCtx.lineWidth = 1;
             gCtx.fillStyle = '#94a3b8';
             gCtx.font = isExport ? 'bold 12px Inter, sans-serif' : '10px Inter, sans-serif';
-            
-            const isBoyle = (currentMode === 'boyle');
-            
-            // 물리축 스케일링 설정
-            // Boyle: X = 부피(0 ~ 100 L), Y = 압력(0 ~ 4.0 atm)
-            // Charles: X = 온도(0 ~ 600 K), Y = 부피(0 ~ 120 L)
-            const xMin = 0;
-            const xMax = isBoyle ? 100 : 600;
-            const yMin = 0;
-            const yMax = isBoyle ? 4.0 : 120;
             
             const xUnit = isBoyle ? 'L' : 'K';
             const yUnit = isBoyle ? 'atm' : 'L';
@@ -854,34 +862,71 @@
             });
             gCtx.stroke();
 
-            // 6. 실시간 위치 박동 점 (Active Dot) 시각화
-            const curX = isBoyle ? physics.volume : physics.temperature;
-            const curY = isBoyle ? currentMeasuredP : currentVolumeL;
-            if (!isNaN(curX) && !isNaN(curY)) {
-                const px = actualLeft + ((curX - xMin) / (xMax - xMin)) * plotSize;
-                const py = actualBottom - ((curY - yMin) / (yMax - yMin)) * plotSize;
-                
-                // 박동 반경 계산
-                const pulse = 4.5 + Math.sin(Date.now() * 0.01) * 1.5;
-                
-                gCtx.fillStyle = '#ef4444'; // 실시간 현재 위치는 직관적인 빨간 점으로 지시
-                gCtx.beginPath();
-                gCtx.arc(px, py, pulse, 0, PI2);
-                gCtx.fill();
-                
-                gCtx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
-                gCtx.lineWidth = 1.5;
-                gCtx.beginPath();
-                gCtx.arc(px, py, pulse + 4, 0, PI2);
-                gCtx.stroke();
-            }
         }
 
+        // 실시간 위치 박동 점 (Active Dot) — 매 프레임 캐시 레이어 위에만 그린다
+        function drawGraphDot(gCtx, layout) {
+            // 곡선이 그려지기 전(데이터 2개 미만)에는 기존 동작대로 점도 생략
+            if (Object.keys(graphHistory).length < 2) return;
+
+            const { plotSize, actualLeft, actualBottom, isBoyle, xMin, xMax, yMin, yMax } = layout;
+            const curX = isBoyle ? physics.volume : physics.temperature;
+            const curY = isBoyle ? currentMeasuredP : currentVolumeL;
+            if (isNaN(curX) || isNaN(curY)) return;
+
+            const px = actualLeft + ((curX - xMin) / (xMax - xMin)) * plotSize;
+            const py = actualBottom - ((curY - yMin) / (yMax - yMin)) * plotSize;
+
+            // 박동 반경 계산
+            const pulse = 4.5 + Math.sin(Date.now() * 0.01) * 1.5;
+
+            gCtx.fillStyle = '#ef4444'; // 실시간 현재 위치는 직관적인 빨간 점으로 지시
+            gCtx.beginPath();
+            gCtx.arc(px, py, pulse, 0, PI2);
+            gCtx.fill();
+
+            gCtx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+            gCtx.lineWidth = 1.5;
+            gCtx.beginPath();
+            gCtx.arc(px, py, pulse + 4, 0, PI2);
+            gCtx.stroke();
+        }
+
+        // JPG 내보내기처럼 한 번에 전체를 그릴 때 사용하는 통합 함수
+        function drawGraphToCanvas(gCtx, w, h, isExport = false) {
+            const layout = computeGraphLayout(w, h);
+            drawGraphBase(gCtx, w, h, isExport, layout);
+            drawGraphDot(gCtx, layout);
+        }
+
+        // 실시간 차트: 정적 레이어(축·격자·라벨·곡선)는 데이터가 바뀔 때만 다시 그린다
+        const chartBase = document.createElement('canvas');
+        const chartBaseCtx = chartBase.getContext('2d');
+        let chartBaseDirty = true;
+
         function drawChart() {
-            drawGraphToCanvas(chartCtx, chartCanvas.width, chartCanvas.height, false);
+            const w = chartCanvas.width;
+            const h = chartCanvas.height;
+            if (!w || !h) return;
+
+            const layout = computeGraphLayout(w, h);
+            if (chartBaseDirty || chartBase.width !== w || chartBase.height !== h) {
+                chartBase.width = w;
+                chartBase.height = h;
+                drawGraphBase(chartBaseCtx, w, h, false, layout);
+                chartBaseDirty = false;
+            }
+            chartCtx.drawImage(chartBase, 0, 0);
+            drawGraphDot(chartCtx, layout);
         }
 
         function animate() {
+            // 로드 시점에 레이아웃이 아직 없어 캔버스가 0크기였다면 여기서 복구한다
+            if (!simWidth && container.clientWidth > 0) {
+                resizeCanvas();
+                resizeChartCanvas();
+            }
+
             frameCount++;
             elapsedFramesForPressure++;
             
@@ -890,11 +935,11 @@
 
             drawBackground();
 
-            particles.forEach(p => p.update());
+            for (let i = 0; i < particles.length; i++) particles[i].update();
 
             for (let iter = 0; iter < 2; iter++) {
                 handleOptimizedCollisions();
-                particles.forEach(p => p.constrainToWalls());
+                for (let i = 0; i < particles.length; i++) particles[i].constrainToWalls();
             }
 
             // 피스톤 역학 연산 (샤를 모드)
@@ -920,14 +965,23 @@
             }
 
             // 피스톤에 쓸려 밀린 입자들의 물리 좌표 뭉침 해소
-            particles.forEach(p => {
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
                 if (p.x + p.radius > pistonX) {
                     p.x = pistonX - p.radius;
                     if (p.vx > 0) p.vx *= -1;
                 }
-            });
+            }
 
-            particles.forEach(p => p.draw());
+            // 입자 일괄 렌더링: 색이 모두 같으므로 경로 하나에 모아 fill 호출 1번으로 처리
+            ctx.fillStyle = '#60a5fa';
+            ctx.beginPath();
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                ctx.moveTo(p.x + p.radius, p.y);
+                ctx.arc(p.x, p.y, p.radius, 0, PI2);
+            }
+            ctx.fill();
 
             // 1초마다 실시간 지표 일괄 정산 및 출력 (그래프 궤적 갱신 포함)
             const now = Date.now();
@@ -945,11 +999,12 @@
                 // 1. 기초 물리 측정값
                 let totalKinetic = 0;
                 let totalSpeed = 0;
-                particles.forEach(p => {
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
                     const speedSq = p.vx*p.vx + p.vy*p.vy;
                     totalKinetic += 0.5 * p.mass * speedSq;
                     totalSpeed += Math.sqrt(speedSq);
-                });
+                }
                 rawKinetic.innerText = totalKinetic.toFixed(1);
                 rawAvgSpeed.innerText = (totalSpeed / numParticles).toFixed(2);
 
@@ -1005,6 +1060,9 @@
                         theoryV: currentTheoryVolumeL
                     };
                 }
+
+                // 그래프 데이터가 갱신되었으므로 정적 레이어를 다시 그리게 한다
+                chartBaseDirty = true;
 
                 accumulatedImpulse = 0;
                 wallCollisionCount = 0;
