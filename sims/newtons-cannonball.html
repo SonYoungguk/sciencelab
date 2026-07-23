@@ -311,6 +311,7 @@
             panY += e.clientY - lastPointerY;
             lastPointerX = e.clientX;
             lastPointerY = e.clientY;
+            invalidateTrajCache(); // 캐시는 팬 위치 기준으로 렌더되므로 함께 갱신
             draw();
         });
 
@@ -429,17 +430,26 @@
                 target.stroke();
             }
 
-            // 지난 궤적들은 오프스크린 캐시에서 가져온다 (줌/리사이즈/목록 변경 시에만 재렌더)
+            // 지난 궤적들은 오프스크린 캐시에서 가져온다.
+            // 캐시는 현재 뷰(줌+팬) 기준으로 렌더되므로 줌/팬/리사이즈/목록 변경 시 무효화된다.
             const liveTraj = isSim ? currentTraj : null;
-            if (!trajCacheValid) {
-                trajCacheCtx.clearRect(0, 0, trajCache.width, trajCache.height);
-                for (const traj of allTrajectories) {
-                    if (traj === liveTraj) continue;
-                    strokeTraj(trajCacheCtx, traj, 'rgba(234, 179, 8, 0.45)', 1.5);
+            if (trajCache.width > 0 && trajCache.height > 0) {
+                if (!trajCacheValid) {
+                    trajCacheCtx.setTransform(1, 0, 0, 1, 0, 0);
+                    trajCacheCtx.clearRect(0, 0, trajCache.width, trajCache.height);
+                    trajCacheCtx.translate(panX, panY);
+                    for (const traj of allTrajectories) {
+                        if (traj === liveTraj) continue;
+                        strokeTraj(trajCacheCtx, traj, 'rgba(234, 179, 8, 0.45)', 1.5);
+                    }
+                    trajCacheValid = true;
                 }
-                trajCacheValid = true;
+                // 캐시에는 이미 팬이 반영되어 있으므로 변환 없이 원본 좌표로 겹친다
+                ctx.save();
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.drawImage(trajCache, 0, 0);
+                ctx.restore();
             }
-            ctx.drawImage(trajCache, 0, 0);
 
             // 비행 중인 최신 궤적만 매 프레임 밝게 그린다
             if (liveTraj) {
@@ -563,6 +573,9 @@
         // 일시 정지/재개 이벤트
         pauseBtn.addEventListener('click', () => {
             if (!ball || (!isSim && !isPaused)) return; // 실행 중인 시뮬레이션이 없으면 무시
+
+            // 일시정지/재개 시 궤적의 캐시 소속(지난 궤적 ↔ 비행 중 궤적)이 바뀐다
+            invalidateTrajCache();
 
             if (isPaused) {
                 // 재개
