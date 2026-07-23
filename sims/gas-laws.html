@@ -200,39 +200,30 @@
                     </div>
                 </div>
 
-                <!-- 공통 출력 정보 (두 모드 모두 자유 피스톤) -->
+                <!-- 공통 출력 정보: 핵심 결과는 '부피' -->
                 <div id="dataArea" class="flex flex-col gap-4">
-                    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800 relative overflow-hidden">
-                        <div class="text-[10px] text-slate-400 mb-1">
-                            외부 압력 (P_ext)
+                    <!-- 핵심 결과: 실제 기체 부피 (가장 크게 강조) -->
+                    <div class="bg-sky-950/40 p-4 rounded-xl border-2 border-sky-500/60 relative overflow-hidden shadow-lg shadow-sky-500/10">
+                        <div class="text-[11px] text-sky-300 font-bold mb-1">📦 실제 기체 부피 (Volume)</div>
+                        <div class="flex items-end gap-1.5">
+                            <span id="rawVolume" class="text-5xl font-mono font-extrabold text-sky-300 leading-none">50.0</span>
+                            <span class="text-base text-sky-500 pb-0.5 font-bold">L</span>
                         </div>
-                        <div class="flex items-end gap-1">
-                            <span id="extPressureReadout" class="text-3xl font-mono font-extrabold text-slate-100">1.000</span>
-                            <span class="text-xs text-slate-500 pb-1.5 font-bold">atm</span>
-                        </div>
+                        <div class="text-[10px] text-slate-400 mt-2.5">이론 수렴 부피 (이상 기체): <span id="theoryVolumeReadout" class="font-mono text-blue-400 font-bold">50.0 L</span></div>
                     </div>
+
+                    <!-- 보조 지표: 압력 (작게) -->
                     <div class="grid grid-cols-2 gap-3">
                         <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-                            <div class="text-[9px] text-slate-500 uppercase font-mono truncate">이론적 수렴 부피</div>
-                            <div id="theoryVolumeReadout" class="text-sm font-mono text-blue-400 font-bold mt-1">0</div>
+                            <div class="text-[9px] text-slate-500 font-mono truncate">외부 압력 (P_ext)</div>
+                            <div class="text-sm font-mono text-slate-300 font-bold mt-1"><span id="extPressureReadout">1.00</span> atm</div>
                         </div>
-                        <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-                            <div class="text-[9px] text-slate-500 uppercase font-mono truncate">실제 기체 부피</div>
-                            <div id="rawVolume" class="text-sm font-mono text-slate-300 font-bold mt-1">0</div>
+                        <div class="bg-emerald-950/25 p-3 rounded-xl border border-emerald-500/30">
+                            <div class="text-[9px] text-emerald-400 font-bold truncate">실측 압력 (ΣΔp / A·Δt)</div>
+                            <div class="text-sm font-mono text-emerald-400 font-bold mt-1"><span id="measuredPressureReadout">1.000</span> atm</div>
                         </div>
                     </div>
-                </div>
-
-                <!-- 실측 압력 & 충돌 횟수 (모든 모드 공통 제공) -->
-                <div class="bg-emerald-950/25 p-4 rounded-xl border border-emerald-500/30 relative overflow-hidden">
-                    <div class="text-[10px] text-emerald-400 font-bold mb-1">
-                        실측 충격량 압력 (P_int = ΣΔp / A·Δt)
-                    </div>
-                    <div class="flex items-end gap-1">
-                        <span id="measuredPressureReadout" class="text-3xl font-mono font-extrabold text-emerald-400">1.000</span>
-                        <span class="text-xs text-emerald-500 pb-1.5 font-bold">atm</span>
-                    </div>
-                    <div id="avgStatus" class="text-[9px] text-emerald-600/70 mt-1.5">⏳ 피스톤 이동 중 — 실시간 값</div>
+                    <div id="avgStatus" class="text-[9px] text-emerald-600/70 -mt-2">⏳ 피스톤 이동 중 — 실시간 값</div>
                 </div>
 
                 <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
@@ -1063,7 +1054,7 @@
 
                 // 실제 부피 (L)
                 currentVolumeL = currentArea * areaToL;
-                rawVolume.innerText = currentVolumeL.toFixed(1) + " L";
+                rawVolume.innerText = currentVolumeL.toFixed(1);
 
                 // 이론 부피 (L)
                 const theoryVolumePixels = totalKinetic / rawExtPressure;
