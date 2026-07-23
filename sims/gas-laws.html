@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>이상 기체 법칙 시뮬레이터</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #090d16;
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+        
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 0.75rem;
+        }
+
+        .canvas-container-shadow {
+            box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.8);
+            background: #050811;
+        }
+
+        /* 슬라이더 커스텀 */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #1e293b;
+            border-radius: 3px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -6px;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+            transition: transform 0.1s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+        input[type=range]:disabled::-webkit-slider-thumb {
+            background: #475569;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+        
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col p-4 md:p-8">
+
+    <header class="max-w-6xl mx-auto w-full mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+            <a href="../index.html" class="inline-block text-xs text-slate-500 hover:text-slate-300 transition-colors mb-1">← 실험실 목록</a>
+            <div class="flex items-center gap-3">
+                <h1 class="text-3xl font-extrabold text-slate-100 tracking-tight">
+                    이상 기체 법칙 시뮬레이터 <span class="text-sky-400 font-mono text-lg font-normal">v5.4</span>
+                </h1>
+                <span class="px-2.5 py-1 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full tracking-wider uppercase">
+                    순수 물리 코어
+                </span>
+            </div>
+            <p class="text-slate-400 text-sm mt-1.5">임의의 보정 필터가 없는 완전한 뉴턴 역학 상태에서 실시간 데이터를 선형 그래프로 기록합니다.</p>
+        </div>
+        
+        <!-- 실시간 성능 모니터 -->
+        <div class="flex gap-4 bg-slate-900/90 p-3 rounded-xl border border-slate-800 font-mono text-xs">
+            <div class="flex flex-col">
+                <span class="text-slate-500">실시간 FPS</span>
+                <span id="fpsCounter" class="text-emerald-400 font-bold text-sm">--</span>
+            </div>
+            <div class="w-px bg-slate-800"></div>
+            <div class="flex flex-col">
+                <span class="text-slate-500">연산 감소율 (공간분할)</span>
+                <span id="bypassRate" class="text-cyan-400 font-bold text-sm">-- %</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto w-full flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- 왼쪽 물리 시각화 화면 & 하단 실시간 그래프 패널 -->
+        <section class="lg:col-span-8 flex flex-col gap-6">
+            <!-- 기체 입자 가속 캔버스 -->
+            <div class="glass-panel rounded-2xl p-4 flex flex-col relative h-[45vh] min-h-[380px]">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse"></span>
+                        기체 입자 실시간 시각화 창
+                    </h2>
+                    <div class="flex items-center gap-2">
+                        <div id="pistonStatus" class="text-xs bg-red-950/50 text-red-300 px-2.5 py-1 rounded border border-red-700/30 font-mono">🔒 피스톤 고정 제어됨</div>
+                        <div class="text-xs bg-slate-900/90 text-slate-400 px-2 py-1 rounded font-mono border border-slate-800">N = 400</div>
+                    </div>
+                </div>
+                <div id="canvas-container" class="flex-1 w-full relative canvas-container-shadow rounded-xl overflow-hidden">
+                    <canvas id="simCanvas"></canvas>
+                </div>
+            </div>
+
+            <!-- 실시간 그래프 트래킹 패널 (세로 높이 확장 대폭 적용: h-[52vh], min-h-[480px]) -->
+            <div class="glass-panel rounded-2xl p-4 flex flex-col h-[52vh] min-h-[480px]">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                        실시간 물리 데이터 트래커 (정사각형 비율 좌표계)
+                    </h2>
+                    <div class="flex gap-2">
+                        <button id="btnClearGraph" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-2.5 py-1 rounded transition-colors border border-slate-700">그래프 리셋</button>
+                        <button id="btnDownloadGraph" class="text-[11px] bg-sky-600 hover:bg-sky-500 text-white font-bold px-2.5 py-1 rounded transition-colors shadow flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            그래프 JPG 다운로드
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 w-full relative canvas-container-shadow rounded-xl overflow-hidden">
+                    <canvas id="chartCanvas"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- 오른쪽 컨트롤 패널 및 Raw 데이터 (왼쪽 열과 하단 라인을 완벽하게 맞추기 위해 높이 변수 lg:h-[calc(...)] 적용) -->
+        <section class="lg:col-span-4 glass-panel rounded-2xl p-6 flex flex-col gap-6 lg:h-[calc(45vh+52vh+1.5rem)] lg:min-h-[884px] overflow-y-auto">
+            
+            <!-- 모드 전환 (Boyle / Charles) -->
+            <div class="flex bg-slate-950 rounded-lg p-1 border border-slate-800">
+                <button id="btnBoyle" class="flex-1 py-2 text-sm rounded-md bg-cyan-600 text-white font-bold transition-all shadow">보일 모드 (부피 고정)</button>
+                <button id="btnCharles" class="flex-1 py-2 text-sm rounded-md text-slate-400 hover:text-white transition-all">샤를 모드 (자유 피스톤)</button>
+            </div>
+
+            <!-- 시뮬레이션 통제 슬라이더 -->
+            <div class="flex flex-col gap-5 bg-slate-900/40 p-4 rounded-xl border border-slate-800/80">
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">물리 변수 제어</div>
+
+                <div>
+                    <div class="flex justify-between text-xs mb-1 text-slate-300">
+                        <span>초기 설정 부피 (Volume)</span>
+                        <span id="volValue" class="font-mono text-cyan-400 font-bold">50 L</span>
+                    </div>
+                    <input type="range" id="volSlider" min="20" max="100" value="50">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs mb-1 text-slate-300">
+                        <span>절대 온도 (Temperature)</span>
+                        <span id="tempValue" class="font-mono text-red-400 font-bold">300 K</span>
+                    </div>
+                    <input type="range" id="tempSlider" min="100" max="600" value="300" disabled>
+                </div>
+
+                <div class="flex items-center gap-3 mt-1 pt-3 border-t border-slate-800">
+                    <input type="checkbox" id="frictionToggle" checked class="w-4 h-4 cursor-pointer accent-emerald-500 bg-slate-950 border-slate-800 rounded">
+                    <label for="frictionToggle" class="text-[11px] text-slate-400 cursor-pointer leading-tight">
+                        피스톤 마찰(Damping) 활성화<br>
+                        <span class="text-[10px] text-slate-500">끄면 대기압과 기체 압력 사이에서 무한 단진동합니다.</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 법칙 맞춤형 계기판 영역 -->
+            <div class="flex flex-col gap-4 mt-auto">
+                <div class="text-[10px] text-slate-500 uppercase tracking-widest font-bold font-mono">Raw Physics Dashboard</div>
+                
+                <!-- 공통 물리 변수 -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                        <div class="text-[9px] text-slate-500 uppercase font-mono truncate">총 운동에너지 (K)</div>
+                        <div id="rawKinetic" class="text-sm font-mono text-yellow-400 font-bold mt-1">0.00</div>
+                    </div>
+                    <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                        <div class="text-[9px] text-slate-500 uppercase font-mono truncate">평균 속력 (Speed)</div>
+                        <div id="rawAvgSpeed" class="text-sm font-mono text-emerald-400 font-bold mt-1">0.00</div>
+                    </div>
+                </div>
+
+                <!-- [보일 모드] 출력 정보 -->
+                <div id="boyleDataArea" class="flex flex-col gap-4">
+                    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800 relative overflow-hidden">
+                        <div class="text-[10px] text-slate-400 mb-1">
+                            이론적 기체 압력 (P_theory = K / V)
+                        </div>
+                        <div class="flex items-end gap-1">
+                            <span id="theoryPressureReadout" class="text-3xl font-mono font-extrabold text-slate-100">1.000</span>
+                            <span class="text-xs text-slate-500 pb-1.5 font-bold">atm</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- [샤를 모드] 출력 정보 -->
+                <div id="charlesDataArea" class="flex flex-col gap-4 hidden">
+                    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800 relative overflow-hidden">
+                        <div class="text-[10px] text-slate-400 mb-1">
+                            외부 대기 압력 (P_ext)
+                        </div>
+                        <div class="flex items-end gap-1">
+                            <span id="extPressureReadout" class="text-3xl font-mono font-extrabold text-slate-100">1.000</span>
+                            <span class="text-xs text-slate-500 pb-1.5 font-bold">atm</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                            <div class="text-[9px] text-slate-500 uppercase font-mono truncate">이론적 수렴 부피</div>
+                            <div id="theoryVolumeReadout" class="text-sm font-mono text-blue-400 font-bold mt-1">0</div>
+                        </div>
+                        <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                            <div class="text-[9px] text-slate-500 uppercase font-mono truncate">실제 기체 부피</div>
+                            <div id="rawVolume" class="text-sm font-mono text-slate-300 font-bold mt-1">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 실측 압력 & 충돌 횟수 (모든 모드 공통 제공) -->
+                <div class="bg-emerald-950/25 p-4 rounded-xl border border-emerald-500/30 relative overflow-hidden">
+                    <div class="text-[10px] text-emerald-400 font-bold mb-1">
+                        실측 충격량 압력 (P_int = ΣΔp / A·Δt)
+                    </div>
+                    <div class="flex items-end gap-1">
+                        <span id="measuredPressureReadout" class="text-3xl font-mono font-extrabold text-emerald-400">1.000</span>
+                        <span class="text-xs text-emerald-500 pb-1.5 font-bold">atm</span>
+                    </div>
+                    <div class="text-[9px] text-emerald-600/70 mt-1.5">※ 매초 사방 벽면에 가해진 실제 물리 충격량의 총합</div>
+                </div>
+
+                <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                    <span class="text-[11px] text-slate-400 font-bold">초당 벽 충돌 횟수 (CPS)</span>
+                    <span id="cpsReadout" class="text-sm font-mono text-cyan-400 font-bold">0</span>
+                </div>
+
+                <!-- 안내 경고 문구 -->
+                <div class="text-[9px] text-slate-500 leading-relaxed bg-slate-950 p-3 rounded-xl border border-slate-900/80">
+                    <strong>💡 과학적 팁:</strong> 실측 압력은 보정 없이 입자 충돌에서 직접 계산되므로 실제 기체 분자처럼 요동칩니다. 부피를 극도로 줄이면 입자 자신이 차지하는 부피(배제 부피)의 영향으로 측정값이 이상 기체 이론값에서 벗어나기 시작하는데, 실제 기체(Real Gas)에서도 고압에서 이와 비슷한 편차가 나타납니다.
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // 원주율 상수 전역 선언 (ReferenceError 원인 방지)
+        const PI2 = Math.PI * 2;
+
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        
+        // 그래프용 캔버스 선언
+        const chartCanvas = document.getElementById('chartCanvas');
+        const chartCtx = chartCanvas.getContext('2d');
+        const btnClearGraph = document.getElementById('btnClearGraph');
+        const btnDownloadGraph = document.getElementById('btnDownloadGraph');
+        
+        const btnBoyle = document.getElementById('btnBoyle');
+        const btnCharles = document.getElementById('btnCharles');
+        
+        const volSlider = document.getElementById('volSlider');
+        const tempSlider = document.getElementById('tempSlider');
+        const volValue = document.getElementById('volValue');
+        const tempValue = document.getElementById('tempValue');
+        const frictionToggle = document.getElementById('frictionToggle');
+        
+        const rawKinetic = document.getElementById('rawKinetic');
+        const rawAvgSpeed = document.getElementById('rawAvgSpeed');
+        const rawVolume = document.getElementById('rawVolume');
+        const theoryVolumeReadout = document.getElementById('theoryVolumeReadout');
+        const theoryPressureReadout = document.getElementById('theoryPressureReadout');
+        const measuredPressureReadout = document.getElementById('measuredPressureReadout');
+        const extPressureReadout = document.getElementById('extPressureReadout');
+        const cpsReadout = document.getElementById('cpsReadout');
+        const fpsCounter = document.getElementById('fpsCounter');
+        const bypassRate = document.getElementById('bypassRate');
+        
+        const boyleDataArea = document.getElementById('boyleDataArea');
+        const charlesDataArea = document.getElementById('charlesDataArea');
+        const pistonStatus = document.getElementById('pistonStatus'); 
+
+        let currentMode = 'boyle';
+        let particles = [];
+        const numParticles = 400; // 400개 상수로 안전 고정
+        let animationId;
+        
+        // 시간 및 프레임 버퍼
+        let frameCount = 0;
+        let elapsedFramesForPressure = 0;
+        let lastUpdateTime = Date.now();
+        
+        // 순수 물리 누적 변수
+        let accumulatedImpulse = 0; 
+        let wallCollisionCount = 0; 
+        
+        // 실시간 캘리브레이션 튜닝 값
+        let pressureCalibrationFactor = 1.0;
+
+        let physics = {
+            volume: 50,
+            temperature: 300
+        };
+
+        let simWidth, simHeight;
+        let margin = 20;
+
+        // 자유 피스톤 변수
+        let pistonX = 0;
+        let pistonVx = 0; 
+        const pistonMass = 350.0; // 관성 제어용 피스톤 질량
+        let externalForcePerFrame = 0; // 프레임 단위 외부 대기압
+        
+        // 공간 분할(Spatial Partitioning) 데이터 모델
+        const cellSize = 16;
+        let grid = [];
+        let gridCols = 0;
+        let gridRows = 0;
+        let collisionChecksAvoided = 0;
+
+        // [실시간 그래프 기록 저장을 위한 상태 공간 매핑 객체]
+        let graphHistory = {}; // 시간 순이 아닌 { 조작변인: {실측값, 이론값} } 형태로 저장하여 스위핑 궤적 구현
+        
+        // 박동하는 현재 포인트 드로잉을 위한 실시간 전역 수치 저장고
+        let currentVolumeL = 50.0;
+        let currentTheoryVolumeL = 50.0;
+        let currentMeasuredP = 1.0;
+        let currentTheoryP = 1.0;
+
+        // [동적 캘리브레이션 기법] 초기 표준상태(N=400, T=300, V=50) 기준을 1.000 atm으로 절대적 영점 설정
+        function updatePhysicsScales() {
+            if (!simWidth) return;
+            const maxBoxWidth = simWidth - margin * 2;
+            const boxHeight = simHeight - margin * 2;
+            const refBoxWidth = maxBoxWidth * 0.5; // 초기 상태(V=50) 부피의 가로 픽셀 폭
+            
+            // 기준상태(N_ref = 400, T_ref = 300)의 가상 기체 총 운동에너지 설정
+            const refEk = 400 * 0.5 * 1.0 * ((300/100) * 6.25);
+            const refArea = refBoxWidth * boxHeight;
+            
+            // 기준 압력 P = K / V
+            const refRawPressure = refEk / refArea;
+            
+            // 1.000 atm이 나오도록 캘리브레이션 팩터 절대 고정
+            pressureCalibrationFactor = 1.0 / refRawPressure;
+
+            // 대기압 평형을 유지하기 위한 외력은 1.000 atm 압력을 만드는 절대값으로 세팅
+            externalForcePerFrame = (1.0 / pressureCalibrationFactor) * boxHeight; 
+        }
+
+        function resizeCanvas() {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            simWidth = canvas.width;
+            simHeight = canvas.height;
+            
+            gridCols = Math.ceil(simWidth / cellSize);
+            gridRows = Math.ceil(simHeight / cellSize);
+            grid = Array.from({ length: gridCols }, () => Array.from({ length: gridRows }, () => []));
+            
+            updatePhysicsScales();
+            if(currentMode === 'boyle') {
+                updatePistonPositionKinematic();
+            }
+
+            // 로드 시점에 컨테이너 크기가 0이었으면 입자 생성이 건너뛰어진다.
+            // 크기가 잡힌 뒤 처음 호출될 때 여기서 만들어 준다.
+            if (particles.length === 0 && simWidth > 0) {
+                initParticles();
+            }
+        }
+
+        function resizeChartCanvas() {
+            chartCanvas.width = chartCanvas.parentElement.clientWidth;
+            chartCanvas.height = chartCanvas.parentElement.clientHeight;
+        }
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            resizeChartCanvas();
+        });
+
+        class Particle {
+            constructor(id) {
+                this.id = id; // 연산 가속을 위한 순차 정수 ID
+                this.radius = 3.5;
+                this.mass = 1.0;
+                
+                const angle = Math.random() * PI2;
+                this.baseVx = Math.cos(angle);
+                this.baseVy = Math.sin(angle);
+                
+                this.vx = 0;
+                this.vy = 0;
+                
+                // 가속 인덱스 캐싱
+                this.gx = 0;
+                this.gy = 0;
+                
+                this.updateSpeed();
+            }
+
+            updateSpeed() {
+                const speedMultiplier = Math.sqrt(physics.temperature / 100) * 2.5;
+                this.vx = this.baseVx * speedMultiplier;
+                this.vy = this.baseVy * speedMultiplier;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+            // (개별 draw()는 제거 — animate()에서 단일 패스로 일괄 렌더링한다)
+
+            // 오직 벽을 향해 날아가는 경우에만 순수 충격량(2mv) 계산
+            constrainToWalls() {
+                const minX = margin + this.radius;
+                const maxX = pistonX - this.radius;
+                const minY = margin + this.radius;
+                const maxY = simHeight - margin - this.radius;
+
+                if (this.y <= minY) {
+                    this.y = minY;
+                    if (this.vy < 0) {
+                        accumulatedImpulse += 2 * this.mass * Math.abs(this.vy);
+                        this.vy = Math.abs(this.vy);
+                        this.baseVy = Math.abs(this.baseVy);
+                        wallCollisionCount++;
+                    }
+                } else if (this.y >= maxY) {
+                    this.y = maxY;
+                    if (this.vy > 0) {
+                        accumulatedImpulse += 2 * this.mass * Math.abs(this.vy);
+                        this.vy = -Math.abs(this.vy);
+                        this.baseVy = -Math.abs(this.baseVy);
+                        wallCollisionCount++;
+                    }
+                }
+
+                if (this.x <= minX) {
+                    this.x = minX;
+                    if (this.vx < 0) {
+                        accumulatedImpulse += 2 * this.mass * Math.abs(this.vx);
+                        this.vx = Math.abs(this.vx);
+                        this.baseVx = Math.abs(this.baseVx);
+                        wallCollisionCount++;
+                    }
+                } else if (this.x >= maxX) {
+                    this.x = maxX;
+                    if (this.vx > 0) {
+                        const impulse = 2 * this.mass * Math.abs(this.vx);
+                        accumulatedImpulse += impulse;
+                        
+                        // 자유 피스톤 운동가속 (F*dt = m*dv)
+                        if (currentMode === 'charles') {
+                            pistonVx += impulse / pistonMass;
+                        }
+
+                        this.vx = -Math.abs(this.vx);
+                        this.baseVx = -Math.abs(this.baseVx);
+                        wallCollisionCount++;
+                    }
+                }
+            }
+
+        }
+
+        function initParticles() {
+            particles = [];
+            if (!simWidth) return;
+            const currentBoxWidth = pistonX - margin - 5; 
+            const boxHeight = simHeight - margin * 2;
+            const areaPerParticle = (currentBoxWidth * boxHeight) / numParticles;
+            const spacing = Math.sqrt(areaPerParticle);
+            const cols = Math.floor(currentBoxWidth / spacing);
+            const rows = Math.ceil(numParticles / cols);
+
+            let count = 0;
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                    if (count >= numParticles) break;
+                    let p = new Particle(count); 
+                    const xOffset = j * (currentBoxWidth / cols) + (currentBoxWidth / cols) / 2;
+                    const yOffset = i * (boxHeight / rows) + (boxHeight / rows) / 2;
+                    p.x = margin + xOffset + (Math.random() - 0.5); 
+                    p.y = margin + yOffset + (Math.random() - 0.5);
+                    particles.push(p);
+                    count++;
+                }
+            }
+        }
+
+        // 공간 최적화 처리기
+        function handleOptimizedCollisions() {
+            for (let x = 0; x < gridCols; x++) {
+                const col = grid[x];
+                for (let y = 0; y < gridRows; y++) col[y].length = 0;
+            }
+            
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                let gx = Math.floor(p.x / cellSize);
+                let gy = Math.floor(p.y / cellSize);
+                
+                if (gx < 0) gx = 0; else if (gx >= gridCols) gx = gridCols - 1;
+                if (gy < 0) gy = 0; else if (gy >= gridRows) gy = gridRows - 1;
+                
+                p.gx = gx;
+                p.gy = gy;
+                grid[gx][gy].push(p);
+            }
+
+            let checks = 0;
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                const gx = p.gx;
+                const gy = p.gy;
+
+                const minX = gx > 0 ? gx - 1 : 0;
+                const maxX = gx < gridCols - 1 ? gx + 1 : gridCols - 1;
+                const minY = gy > 0 ? gy - 1 : 0;
+                const maxY = gy < gridRows - 1 ? gy + 1 : gridRows - 1;
+
+                for (let x = minX; x <= maxX; x++) {
+                    for (let y = minY; y <= maxY; y++) {
+                        const cellParticles = grid[x][y];
+                        for (let j = 0; j < cellParticles.length; j++) {
+                            const other = cellParticles[j];
+                            if (other.id > p.id) {
+                                checks++;
+                                checkCollision(p, other);
+                            }
+                        }
+                    }
+                }
+            }
+            const totalOn2 = (numParticles * (numParticles - 1)) / 2;
+            collisionChecksAvoided = totalOn2 - checks;
+        }
+
+        // 2차원 완전 탄성 구체 충돌 연산
+        function checkCollision(p1, p2) {
+            let dx = p2.x - p1.x;
+            let dy = p2.y - p1.y;
+            const minDist = p1.radius + p2.radius;
+            const distSq = dx * dx + dy * dy;
+
+            // 대부분의 쌍은 여기서 조기 종료된다 (제곱 비교로 sqrt 회피)
+            if (distSq >= minDist * minDist) return;
+
+            let dist = Math.sqrt(distSq);
+            if (dist === 0) {
+                dx = 0.1; dy = 0.1; dist = Math.sqrt(dx * dx + dy * dy);
+            }
+            const overlap = minDist - dist;
+            const nx = dx / dist; const ny = dy / dist;
+
+            const sep = (overlap / 2) + 0.005;
+            p1.x -= nx * sep; p1.y -= ny * sep;
+            p2.x += nx * sep; p2.y += ny * sep;
+
+            const dvx = p2.vx - p1.vx; const dvy = p2.vy - p1.vy;
+            const velAlongNormal = dvx * nx + dvy * ny;
+            if (velAlongNormal > 0) return;
+
+            const j = -2 * velAlongNormal / 2;
+            const impulseX = j * nx; const impulseY = j * ny;
+
+            p1.vx -= impulseX; p1.vy -= impulseY;
+            p2.vx += impulseX; p2.vy += impulseY;
+
+            const speedMultiplier = Math.sqrt(physics.temperature / 100) * 2.5;
+            p1.baseVx = p1.vx / speedMultiplier; p1.baseVy = p1.vy / speedMultiplier;
+            p2.baseVx = p2.vx / speedMultiplier; p2.baseVy = p2.vy / speedMultiplier;
+        }
+
+        function updatePistonPositionKinematic() {
+            if(!simWidth) return;
+            const maxBoxWidth = simWidth - margin * 2;
+            pistonX = margin + (maxBoxWidth * (physics.volume / 100));
+        }
+
+        volSlider.addEventListener('input', (e) => {
+            if (currentMode === 'boyle') {
+                physics.volume = parseFloat(e.target.value);
+                volValue.innerText = `${physics.volume.toFixed(0)} L`;
+                updatePistonPositionKinematic();
+            }
+        });
+
+        tempSlider.addEventListener('input', (e) => {
+            physics.temperature = parseFloat(e.target.value);
+            tempValue.innerText = `${physics.temperature.toFixed(0)} K`;
+            particles.forEach(p => p.updateSpeed());
+        });
+
+        function setMode(mode) {
+            currentMode = mode;
+            physics.volume = 50;
+            physics.temperature = 300;
+            volSlider.value = 50;
+            tempSlider.value = 300;
+            volValue.innerText = `50 L`;
+            tempValue.innerText = `300 K`;
+            
+            pistonVx = 0; 
+            updatePistonPositionKinematic();
+            particles.forEach(p => p.updateSpeed());
+            updatePhysicsScales();
+            
+            // 모드 전환 시 그래프 데이터 리셋
+            graphHistory = {};
+            chartBaseDirty = true;
+
+            if (mode === 'boyle') {
+                btnBoyle.className = "flex-1 py-2 text-sm rounded-md bg-cyan-600 text-white font-bold transition-all shadow";
+                btnCharles.className = "flex-1 py-2 text-sm rounded-md text-slate-400 hover:text-white bg-slate-950 border-0";
+                volSlider.disabled = false;
+                tempSlider.disabled = true;
+                volSlider.parentElement.style.opacity = "1";
+                tempSlider.parentElement.style.opacity = "0.4";
+                
+                boyleDataArea.classList.remove('hidden');
+                charlesDataArea.classList.add('hidden');
+                pistonStatus.innerText = "🔒 피스톤 고정 제어됨";
+                pistonStatus.className = "text-xs bg-red-950/50 text-red-300 px-2.5 py-1 rounded border border-red-700/30 font-mono";
+            } else {
+                btnCharles.className = "flex-1 py-2 text-sm rounded-md bg-blue-600 text-white font-bold transition-all shadow";
+                btnBoyle.className = "flex-1 py-2 text-sm rounded-md text-slate-400 hover:text-white bg-slate-950 border-0";
+                volSlider.disabled = true;
+                tempSlider.disabled = false;
+                volSlider.parentElement.style.opacity = "0.4";
+                tempSlider.parentElement.style.opacity = "1";
+                
+                charlesDataArea.classList.remove('hidden');
+                boyleDataArea.classList.add('hidden');
+                pistonStatus.innerText = "🔓 피스톤 자유 이동 (대기압 평형)";
+                pistonStatus.className = "text-xs bg-emerald-950/50 text-emerald-300 px-2.5 py-1 rounded border border-emerald-700/30 font-mono";
+            }
+        }
+
+        btnBoyle.addEventListener('click', () => setMode('boyle'));
+        btnCharles.addEventListener('click', () => setMode('charles'));
+        
+        // 그래프 청소 리스너
+        btnClearGraph.addEventListener('click', () => {
+            graphHistory = {};
+            chartBaseDirty = true;
+        });
+
+        // 그래프 이미지 다운로드 (JPG)
+        btnDownloadGraph.addEventListener('click', () => {
+            // 이미지 캡처용 가상 오프스크린 캔버스 생성 (내보내기 고화질 확보 목적)
+            const offscreenCanvas = document.createElement('canvas');
+            offscreenCanvas.width = 800;
+            offscreenCanvas.height = 400;
+            const offscreenCtx = offscreenCanvas.getContext('2d');
+            
+            // 오프스크린 캔버스에 동일하게 그래프 드로잉 진행 (배경은 어둡게 지정)
+            drawGraphToCanvas(offscreenCtx, 800, 400, true);
+            
+            // 파일 내보내기용 이미지 데이터 URI 추출
+            try {
+                const dataUrl = offscreenCanvas.toDataURL('image/jpeg', 0.95);
+                const link = document.createElement('a');
+                const timestamp = new Date().toISOString().slice(0, 19).replace(/T|:/g, "_");
+                link.download = `GasLaw_Graph_${currentMode === 'boyle' ? 'Boyle' : 'Charles'}_${timestamp}.jpg`;
+                link.href = dataUrl;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } catch (err) {
+                console.error("그래프 이미지 저장 오류:", err);
+            }
+        });
+
+        function drawBackground() {
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(margin, margin, simWidth - margin * 2, simHeight - margin * 2);
+
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(pistonX, margin - 2, 10, simHeight - margin * 2 + 4);
+        }
+
+        // [그래프 렌더링 모듈] 정적 레이어(축·격자·곡선)와 실시간 점을 분리해
+        // 매 프레임에는 캐시된 레이어 위에 박동 점만 다시 그린다.
+        function computeGraphLayout(w, h) {
+            const paddingLeft = 70;
+            const paddingRight = 40;
+            const paddingTop = 45;
+            const paddingBottom = 60;
+
+            const availWidth = w - paddingLeft - paddingRight;
+            const availHeight = h - paddingTop - paddingBottom;
+
+            // X축과 Y축의 픽셀 길이를 언제나 같게 1:1 정사각형 플롯 처리
+            const plotSize = Math.min(availWidth, availHeight);
+            const actualLeft = paddingLeft + (availWidth - plotSize) / 2;
+            const actualTop = paddingTop + (availHeight - plotSize) / 2;
+
+            const isBoyle = (currentMode === 'boyle');
+            // 물리축 스케일: Boyle X=부피(0~100L)/Y=압력(0~4atm), Charles X=온도(0~600K)/Y=부피(0~120L)
+            return {
+                plotSize, actualLeft, actualTop,
+                actualBottom: actualTop + plotSize,
+                actualRight: actualLeft + plotSize,
+                isBoyle,
+                xMin: 0, xMax: isBoyle ? 100 : 600,
+                yMin: 0, yMax: isBoyle ? 4.0 : 120
+            };
+        }
+
+        function drawGraphBase(gCtx, w, h, isExport, layout) {
+            const { plotSize, actualLeft, actualTop, actualBottom, actualRight,
+                    isBoyle, xMin, xMax, yMin, yMax } = layout;
+
+            // 1. 배경 클리어 및 페인팅
+            gCtx.fillStyle = '#050811';
+            gCtx.fillRect(0, 0, w, h);
+            
+            // 2. 가로축 & 세로축 선 드로잉
+            gCtx.strokeStyle = '#334155';
+            gCtx.lineWidth = 1.5;
+            gCtx.beginPath();
+            gCtx.moveTo(actualLeft, actualTop);
+            gCtx.lineTo(actualLeft, actualBottom);
+            gCtx.lineTo(actualRight, actualBottom);
+            gCtx.stroke();
+            
+            // 3. 내부 격자 점선 및 스케일 가이드 생성
+            gCtx.strokeStyle = 'rgba(51, 65, 85, 0.4)';
+            gCtx.lineWidth = 1;
+            gCtx.fillStyle = '#94a3b8';
+            gCtx.font = isExport ? 'bold 12px Inter, sans-serif' : '10px Inter, sans-serif';
+            
+            const xUnit = isBoyle ? 'L' : 'K';
+            const yUnit = isBoyle ? 'atm' : 'L';
+            
+            // Y축 그리드 & 라벨링 (정사각형 플롯 크기 기반)
+            const ySteps = 4;
+            for (let i = 0; i <= ySteps; i++) {
+                const yVal = yMin + ((yMax - yMin) / ySteps) * i;
+                const ratio = i / ySteps;
+                const yPos = actualBottom - (plotSize * ratio);
+                
+                if (i > 0) {
+                    gCtx.beginPath();
+                    gCtx.setLineDash([4, 4]);
+                    gCtx.moveTo(actualLeft, yPos);
+                    gCtx.lineTo(actualRight, yPos);
+                    gCtx.stroke();
+                    gCtx.setLineDash([]);
+                }
+                gCtx.fillText(yVal.toFixed(isBoyle ? 1 : 0) + ' ' + yUnit, actualLeft - 50, yPos + 4);
+            }
+            
+            // X축 그리드 & 라벨링 (정사각형 플롯 크기 기반)
+            const xSteps = 5;
+            for (let i = 0; i <= xSteps; i++) {
+                const xVal = xMin + ((xMax - xMin) / xSteps) * i;
+                const ratio = i / xSteps;
+                const xPos = actualLeft + (plotSize * ratio);
+                
+                if (i > 0) {
+                    gCtx.beginPath();
+                    gCtx.setLineDash([4, 4]);
+                    gCtx.moveTo(xPos, actualTop);
+                    gCtx.lineTo(xPos, actualBottom);
+                    gCtx.stroke();
+                    gCtx.setLineDash([]);
+                }
+                gCtx.fillText(xVal.toFixed(0) + ' ' + xUnit, xPos - 12, actualBottom + 18);
+            }
+            
+            // 축 레이블 타이틀 (정사각형 플롯 하단 및 좌측에 정밀 배치)
+            gCtx.fillStyle = '#64748b';
+            gCtx.font = 'bold 10px Inter, sans-serif';
+            gCtx.fillText(`[X축] 조작변인: ${isBoyle ? '부피 (Volume)' : '온도 (Temperature)'}`, actualLeft + 5, h - 15);
+            
+            gCtx.save();
+            gCtx.translate(actualLeft - 54, actualTop + (plotSize / 2) + 50);
+            gCtx.rotate(-Math.PI / 2);
+            gCtx.fillText(`[Y축] 종속변인: ${isBoyle ? '압력 (Pressure)' : '부피 (Volume)'}`, 0, 0);
+            gCtx.restore();
+            
+            // 4. 타이틀 및 레전드(범례) 드로잉
+            gCtx.fillStyle = '#f1f5f9';
+            gCtx.font = isExport ? 'bold 14px Inter, sans-serif' : '11px Inter, sans-serif';
+            const titleText = isBoyle ? '보일의 법칙 과학 그래프 (P vs V)' : '샤를의 법칙 과학 그래프 (V vs T)';
+            gCtx.fillText(titleText, actualLeft, 24);
+            
+            const primaryColor = isBoyle ? '#10b981' : '#38bdf8'; // 실측값: 초록(보일) / 파랑(샤를)
+            const secondaryColor = '#94a3b8';                    // 이론값: 회색
+            
+            gCtx.fillStyle = primaryColor;
+            gCtx.fillRect(w - 200, 12, 10, 10);
+            gCtx.fillStyle = '#94a3b8';
+            gCtx.font = '10px Inter, sans-serif';
+            gCtx.fillText(isBoyle ? '실측 압력 (P_int)' : '실제 기체 부피 (V_act)', w - 185, 21);
+            
+            gCtx.fillStyle = secondaryColor;
+            gCtx.fillRect(w - 95, 12, 10, 10);
+            gCtx.fillStyle = '#94a3b8';
+            gCtx.fillText(isBoyle ? '이론 압력' : '이론적 부피', w - 80, 21);
+
+            // 5. 스윕 궤적 곡선 그리기 (정사각형 픽셀 단위로 환산)
+            const keys = Object.keys(graphHistory).map(Number).sort((a, b) => a - b);
+            if (keys.length < 2) {
+                gCtx.fillStyle = '#475569';
+                gCtx.font = '11px Inter, sans-serif';
+                gCtx.fillText('슬라이더를 조절하여 그래프 영역에 곡선을 그려보세요!', actualLeft + (plotSize / 2) - 130, h / 2);
+                return;
+            }
+            
+            // 이론값(Theory) 선 그리기
+            gCtx.strokeStyle = secondaryColor;
+            gCtx.lineWidth = isExport ? 2.0 : 1.5;
+            gCtx.beginPath();
+            keys.forEach((x, idx) => {
+                const data = graphHistory[x];
+                const y = isBoyle ? data.yTheo : data.theoryV;
+                const px = actualLeft + ((x - xMin) / (xMax - xMin)) * plotSize;
+                const py = actualBottom - ((y - yMin) / (yMax - yMin)) * plotSize;
+                
+                if (idx === 0) gCtx.moveTo(px, py);
+                else gCtx.lineTo(px, py);
+            });
+            gCtx.stroke();
+            
+            // 실측값(Measured) 선 그리기
+            gCtx.strokeStyle = primaryColor;
+            gCtx.lineWidth = isExport ? 3.0 : 2.0;
+            gCtx.beginPath();
+            keys.forEach((x, idx) => {
+                const data = graphHistory[x];
+                const y = isBoyle ? data.yMeas : data.actualV;
+                const px = actualLeft + ((x - xMin) / (xMax - xMin)) * plotSize;
+                const py = actualBottom - ((y - yMin) / (yMax - yMin)) * plotSize;
+                
+                if (idx === 0) gCtx.moveTo(px, py);
+                else gCtx.lineTo(px, py);
+            });
+            gCtx.stroke();
+
+        }
+
+        // 실시간 위치 박동 점 (Active Dot) — 매 프레임 캐시 레이어 위에만 그린다
+        function drawGraphDot(gCtx, layout) {
+            // 곡선이 그려지기 전(데이터 2개 미만)에는 기존 동작대로 점도 생략
+            if (Object.keys(graphHistory).length < 2) return;
+
+            const { plotSize, actualLeft, actualBottom, isBoyle, xMin, xMax, yMin, yMax } = layout;
+            const curX = isBoyle ? physics.volume : physics.temperature;
+            const curY = isBoyle ? currentMeasuredP : currentVolumeL;
+            if (isNaN(curX) || isNaN(curY)) return;
+
+            const px = actualLeft + ((curX - xMin) / (xMax - xMin)) * plotSize;
+            const py = actualBottom - ((curY - yMin) / (yMax - yMin)) * plotSize;
+
+            // 박동 반경 계산
+            const pulse = 4.5 + Math.sin(Date.now() * 0.01) * 1.5;
+
+            gCtx.fillStyle = '#ef4444'; // 실시간 현재 위치는 직관적인 빨간 점으로 지시
+            gCtx.beginPath();
+            gCtx.arc(px, py, pulse, 0, PI2);
+            gCtx.fill();
+
+            gCtx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+            gCtx.lineWidth = 1.5;
+            gCtx.beginPath();
+            gCtx.arc(px, py, pulse + 4, 0, PI2);
+            gCtx.stroke();
+        }
+
+        // JPG 내보내기처럼 한 번에 전체를 그릴 때 사용하는 통합 함수
+        function drawGraphToCanvas(gCtx, w, h, isExport = false) {
+            const layout = computeGraphLayout(w, h);
+            drawGraphBase(gCtx, w, h, isExport, layout);
+            drawGraphDot(gCtx, layout);
+        }
+
+        // 실시간 차트: 정적 레이어(축·격자·라벨·곡선)는 데이터가 바뀔 때만 다시 그린다
+        const chartBase = document.createElement('canvas');
+        const chartBaseCtx = chartBase.getContext('2d');
+        let chartBaseDirty = true;
+
+        function drawChart() {
+            const w = chartCanvas.width;
+            const h = chartCanvas.height;
+            if (!w || !h) return;
+
+            const layout = computeGraphLayout(w, h);
+            if (chartBaseDirty || chartBase.width !== w || chartBase.height !== h) {
+                chartBase.width = w;
+                chartBase.height = h;
+                drawGraphBase(chartBaseCtx, w, h, false, layout);
+                chartBaseDirty = false;
+            }
+            chartCtx.drawImage(chartBase, 0, 0);
+            drawGraphDot(chartCtx, layout);
+        }
+
+        function animate() {
+            // 로드 시점에 레이아웃이 아직 없어 캔버스가 0크기였다면 여기서 복구한다
+            if (!simWidth && container.clientWidth > 0) {
+                resizeCanvas();
+                resizeChartCanvas();
+            }
+
+            frameCount++;
+            elapsedFramesForPressure++;
+            
+            ctx.fillStyle = '#050811';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawBackground();
+
+            for (let i = 0; i < particles.length; i++) particles[i].update();
+
+            for (let iter = 0; iter < 2; iter++) {
+                handleOptimizedCollisions();
+                for (let i = 0; i < particles.length; i++) particles[i].constrainToWalls();
+            }
+
+            // 피스톤 역학 연산 (샤를 모드)
+            if (currentMode === 'charles') {
+                pistonVx -= externalForcePerFrame / pistonMass;
+                
+                if(frictionToggle.checked) {
+                    pistonVx *= 0.96; // 현실과 완벽히 동치인 점성 마찰 감쇠력
+                }
+
+                pistonX += pistonVx;
+
+                const maxBoxWidth = simWidth - margin * 2;
+                const minPistonX = margin + (maxBoxWidth * 0.2);
+                const maxPistonX = margin + maxBoxWidth;
+
+                if (pistonX <= minPistonX) { pistonX = minPistonX; pistonVx = Math.abs(pistonVx)*0.5; }
+                if (pistonX > maxPistonX) { pistonX = maxPistonX; pistonVx = -Math.abs(pistonVx)*0.5; }
+
+                physics.volume = ((pistonX - margin) / maxBoxWidth) * 100;
+                volSlider.value = physics.volume;
+                volValue.innerText = `${physics.volume.toFixed(0)} L`;
+            }
+
+            // 피스톤에 쓸려 밀린 입자들의 물리 좌표 뭉침 해소
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                if (p.x + p.radius > pistonX) {
+                    p.x = pistonX - p.radius;
+                    if (p.vx > 0) p.vx *= -1;
+                }
+            }
+
+            // 입자 일괄 렌더링: 색이 모두 같으므로 경로 하나에 모아 fill 호출 1번으로 처리
+            ctx.fillStyle = '#60a5fa';
+            ctx.beginPath();
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                ctx.moveTo(p.x + p.radius, p.y);
+                ctx.arc(p.x, p.y, p.radius, 0, PI2);
+            }
+            ctx.fill();
+
+            // 1초마다 실시간 지표 일괄 정산 및 출력 (그래프 궤적 갱신 포함)
+            const now = Date.now();
+            const elapsed = (now - lastUpdateTime) / 1000;
+            
+            if (elapsed >= 1.0) {
+                const fps = Math.round(frameCount / elapsed);
+                fpsCounter.innerText = `${fps}`;
+                frameCount = 0;
+
+                const totalOn2 = (numParticles * (numParticles - 1)) / 2;
+                bypassRate.innerText = `${((collisionChecksAvoided / totalOn2) * 100).toFixed(1)}`;
+                cpsReadout.innerText = wallCollisionCount.toLocaleString();
+
+                // 1. 기초 물리 측정값
+                let totalKinetic = 0;
+                let totalSpeed = 0;
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
+                    const speedSq = p.vx*p.vx + p.vy*p.vy;
+                    totalKinetic += 0.5 * p.mass * speedSq;
+                    totalSpeed += Math.sqrt(speedSq);
+                }
+                rawKinetic.innerText = totalKinetic.toFixed(1);
+                rawAvgSpeed.innerText = (totalSpeed / numParticles).toFixed(2);
+
+                const boxWidth = pistonX - margin;
+                const boxHeight = simHeight - margin * 2;
+                const currentArea = boxWidth * boxHeight;
+                const perimeter = 2 * (boxWidth + boxHeight);
+                
+                // 2. 실측 기체 압력 (ΣΔp / A·Δt)
+                const forcePerFrame = accumulatedImpulse / elapsedFramesForPressure;
+                const rawMeasuredPressure = forcePerFrame / perimeter;
+                currentMeasuredP = rawMeasuredPressure * pressureCalibrationFactor;
+                measuredPressureReadout.innerText = currentMeasuredP.toFixed(3);
+
+                if (currentMode === 'boyle') {
+                    // 보일 모드: 이론 기체 압력 계산
+                    const rawTheoryPressure = totalKinetic / currentArea;
+                    currentTheoryP = rawTheoryPressure * pressureCalibrationFactor;
+                    theoryPressureReadout.innerText = currentTheoryP.toFixed(3);
+                    
+                    // X축 조작변인인 현재 '부피(Volume)'를 인덱스로 삼아 데이터 매핑 저장
+                    const roundedVol = Math.round(physics.volume);
+                    graphHistory[roundedVol] = {
+                        yMeas: currentMeasuredP,
+                        yTheo: currentTheoryP
+                    };
+                    
+                    // 현재 점 플로팅 정보 연계
+                    currentVolumeL = physics.volume;
+                } else {
+                    // 샤를 모드: 대기압 및 부피 평형 측정
+                    const rawExtPressure = externalForcePerFrame / boxHeight;
+                    const extPressure = rawExtPressure * pressureCalibrationFactor;
+                    extPressureReadout.innerText = extPressure.toFixed(3);
+                    
+                    // 픽셀 단위 면적을 "L" 단위로 정밀 매핑하기 위한 계수 연산
+                    const maxBoxWidth = simWidth - margin * 2;
+                    const areaToL = 100 / (boxHeight * maxBoxWidth);
+                    
+                    // 실제 부피 (L)
+                    currentVolumeL = currentArea * areaToL;
+                    rawVolume.innerText = currentVolumeL.toFixed(1) + " L";
+                    
+                    // 이론 부피 (L)
+                    const theoryVolumePixels = totalKinetic / rawExtPressure;
+                    currentTheoryVolumeL = theoryVolumePixels * areaToL;
+                    theoryVolumeReadout.innerText = currentTheoryVolumeL.toFixed(1) + " L";
+                    
+                    // X축 조작변인인 현재 '온도(Temperature)'를 인덱스로 삼아 데이터 매핑 저장
+                    const roundedTemp = Math.round(physics.temperature);
+                    graphHistory[roundedTemp] = {
+                        actualV: currentVolumeL,
+                        theoryV: currentTheoryVolumeL
+                    };
+                }
+
+                // 그래프 데이터가 갱신되었으므로 정적 레이어를 다시 그리게 한다
+                chartBaseDirty = true;
+
+                accumulatedImpulse = 0;
+                wallCollisionCount = 0;
+                elapsedFramesForPressure = 0;
+                lastUpdateTime = now;
+            }
+
+            // 실시간 현재 활성 점 박동 연출을 위해 프레임 단위로 차트 리렌더링
+            drawChart();
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        window.onload = () => {
+            resizeCanvas();
+            resizeChartCanvas();
+            initParticles();
+            setMode('boyle');
+            animate();
+        };
+    </script>
+</body>
+</html>

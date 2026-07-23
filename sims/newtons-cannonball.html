@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>뉴턴의 대포알 실험</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 모바일 연타 시 화면 확대 및 드래그 선택 방지 */
+        button, input[type="range"] {
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col p-3 md:p-6 justify-center items-center">
+
+    <div class="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-2xl p-3 md:p-6 shadow-2xl flex flex-col lg:flex-row gap-4 md:gap-6">
+        
+        <!-- 캔버스 시뮬레이션 뷰포트 (터치 및 리사이즈 지원) -->
+        <div class="flex-1 flex flex-col bg-slate-950 rounded-xl overflow-hidden border border-slate-800 relative h-[320px] sm:h-[400px] md:h-[450px]">
+            <div class="bg-slate-900/80 px-3 py-1.5 border-b border-slate-800 flex justify-between items-center text-[11px] md:text-xs z-10">
+                <span class="flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    물리 엔진 가동 중
+                </span>
+                <span id="scaleDisplay">배율: 1.0x</span>
+            </div>
+            
+            <!-- 줌/이동 플로팅 컨트롤러 -->
+            <div class="absolute top-12 right-3 flex flex-col gap-1.5 z-20">
+                <button id="zoomInBtn" class="w-9 h-9 bg-slate-800/90 hover:bg-slate-700 text-white rounded-lg border border-slate-700 flex items-center justify-center shadow-lg transition-all" title="확대">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </button>
+                <button id="zoomOutBtn" class="w-9 h-9 bg-slate-800/90 hover:bg-slate-700 text-white rounded-lg border border-slate-700 flex items-center justify-center shadow-lg transition-all" title="축소">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </button>
+                <button id="viewResetBtn" class="w-9 h-9 bg-slate-800/90 hover:bg-slate-700 text-white rounded-lg border border-slate-700 flex items-center justify-center shadow-lg transition-all text-xs font-bold" title="시점 초기화">
+                    1:1
+                </button>
+            </div>
+
+            <!-- 마우스 휠/드래그 정보 오버레이 -->
+            <div class="absolute bottom-3 right-3 bg-slate-900/60 text-slate-400 text-[10px] px-2 py-1 rounded border border-slate-800 pointer-events-none hidden md:block z-10">
+                🖱️ 휠: 줌 | 드래그: 화면 이동 | 두 손가락: 핀치 줌
+            </div>
+
+            <div class="flex-1 flex items-center justify-center relative bg-[#040814] w-full h-full" id="canvas-wrapper">
+                <canvas id="simCanvas" class="block touch-none" style="cursor: grab;"></canvas>
+            </div>
+        </div>
+
+        <!-- 파라미터 조작 및 모니터링 대시보드 -->
+        <div class="w-full lg:w-[340px] flex flex-col gap-3 md:gap-4">
+            <div>
+                <a href="../index.html" class="inline-block text-[10px] md:text-xs text-slate-500 hover:text-slate-300 transition-colors mb-1">← 실험실 목록</a>
+                <h1 class="text-lg md:text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">뉴턴의 대포알 실험</h1>
+                <p class="text-[10px] md:text-xs text-slate-400">지구 만유인력에 따른 궤도 역학 시뮬레이터</p>
+            </div>
+
+            <!-- 실시간 데이터 화면 -->
+            <div class="grid grid-cols-2 gap-2 bg-slate-950 p-2.5 md:p-3 rounded-xl border border-slate-800 text-[11px] md:text-xs">
+                <div>
+                    <span class="text-slate-500 block">상황 상태</span>
+                    <span id="statusDisplay" class="font-bold text-indigo-400">대기 중</span>
+                </div>
+                <div>
+                    <span class="text-slate-500 block">누적 시간</span>
+                    <span id="timeDisplay" class="font-bold">0 <span class="text-slate-500 font-normal">초</span></span>
+                </div>
+                <div class="mt-1">
+                    <span class="text-slate-500 block">비행 고도</span>
+                    <span id="altDisplay" class="font-bold">--- <span class="text-slate-500 font-normal">km</span></span>
+                </div>
+                <div class="mt-1">
+                    <span class="text-slate-500 block">현재 속력</span>
+                    <span id="speedDisplay" class="font-bold">--- <span class="text-slate-500 font-normal">m/s</span></span>
+                </div>
+            </div>
+
+            <!-- 물리 엔진 입력 제어 슬라이더 -->
+            <div class="space-y-3 md:space-y-4 text-xs md:text-sm">
+                <!-- 초기 속도 조절 -->
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="font-medium text-slate-300">초기 속도 (v₀)</label>
+                        <span id="vVal" class="text-indigo-400 font-mono font-semibold">3,000 m/s (10,800 km/h)</span>
+                    </div>
+                    <input type="range" id="velocity" min="0" max="12000" step="100" value="3000" class="w-full accent-indigo-500 bg-slate-800 h-2 rounded-lg appearance-none cursor-pointer py-1">
+                </div>
+
+                <!-- 발사 높이 조절 -->
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="font-medium text-slate-300">발사 고도 (h)</label>
+                        <span id="hVal" class="text-indigo-400 font-mono font-semibold">200 km</span>
+                    </div>
+                    <input type="range" id="height" min="50" max="1500" step="50" value="200" class="w-full accent-indigo-500 bg-slate-800 h-2 rounded-lg appearance-none cursor-pointer py-1">
+                </div>
+
+                <!-- 중력세기 상수 비율 조절 -->
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="font-medium text-slate-300">중력 가속도 배율 (g)</label>
+                        <span id="gVal" class="text-indigo-400 font-mono font-semibold">1.0x</span>
+                    </div>
+                    <input type="range" id="gravity" min="0.1" max="3.0" step="0.1" value="1.0" class="w-full accent-indigo-500 bg-slate-800 h-2 rounded-lg appearance-none cursor-pointer py-1">
+                </div>
+
+                <!-- 대포알 질량 조절 -->
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="font-medium text-slate-300">대포알 질량 (m)</label>
+                        <span id="mVal" class="text-indigo-400 font-mono font-semibold">100 kg</span>
+                    </div>
+                    <input type="range" id="mass" min="1" max="2000" step="10" value="100" class="w-full accent-indigo-500 bg-slate-800 h-2 rounded-lg appearance-none cursor-pointer py-1">
+                    <p class="text-[9px] md:text-[10px] text-slate-500 mt-1 italic leading-relaxed">※ 갈릴레이와 뉴턴의 낙하 법칙에 따라 물체의 낙하 속도와 궤적은 질량에 영향을 받지 않습니다.</p>
+                </div>
+            </div>
+
+            <!-- 시뮬레이터 조작 버튼 -->
+            <div class="grid grid-cols-3 gap-2 pt-1 md:pt-2">
+                <button id="fireBtn" class="py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold rounded-lg transition-colors text-xs md:text-sm shadow-md">발사!</button>
+                <button id="pauseBtn" class="py-2.5 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white font-bold rounded-lg transition-colors text-xs md:text-sm shadow-md">정지</button>
+                <button id="resetBtn" class="py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-300 font-bold rounded-lg transition-colors text-xs md:text-sm border border-slate-700/50">초기화</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const wrapper = document.getElementById('canvas-wrapper');
+
+        const vIn = document.getElementById('velocity');
+        const hIn = document.getElementById('height');
+        const gIn = document.getElementById('gravity');
+        const mIn = document.getElementById('mass');
+
+        const vVal = document.getElementById('vVal');
+        const hVal = document.getElementById('hVal');
+        const gVal = document.getElementById('gVal');
+        const mVal = document.getElementById('mVal');
+
+        const statusDisplay = document.getElementById('statusDisplay');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const altDisplay = document.getElementById('altDisplay');
+        const speedDisplay = document.getElementById('speedDisplay');
+        const scaleDisplay = document.getElementById('scaleDisplay');
+        
+        const fireBtn = document.getElementById('fireBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        const zoomInBtn = document.getElementById('zoomInBtn');
+        const zoomOutBtn = document.getElementById('zoomOutBtn');
+        const viewResetBtn = document.getElementById('viewResetBtn');
+
+        // 물리 연산용 기본 상수
+        const G = 6.6743e-11;
+        const M_EARTH = 5.972e24;
+        const R_EARTH = 6371000;
+        
+        let BASE_DRAW_R = 120; // 기본 지구 픽셀 크기
+        let zoomFactor = 1.0; // 확대 축소율 (배율)
+        
+        // 화면 이동(Pan) 변수
+        let panX = 0;
+        let panY = 0;
+        let isDragging = false;
+        let lastPointerX = 0;
+        let lastPointerY = 0;
+
+        let cx, cy, animId = null, isSim = false, isPaused = false, allTrajectories = [], currentTraj = null, ball = null;
+        
+        // 렌더링 최적화 캐시 변수
+        let cachedEarthGrad = null;
+        let cachedDrawR = 0;
+        let cachedCx = 0;
+        let frameCount = 0;
+
+        // 지난 궤적 오프스크린 캐시: 줌/리사이즈/궤적 목록 변경 시에만 다시 그린다.
+        // (화면 이동은 translate로 처리되므로 캐시를 무효화하지 않는다)
+        const trajCache = document.createElement('canvas');
+        const trajCacheCtx = trajCache.getContext('2d');
+        let trajCacheValid = false;
+
+        function invalidateTrajCache() {
+            trajCacheValid = false;
+        }
+
+        // 정지 버튼 상태 초기화 함수
+        function resetPauseBtn() {
+            isPaused = false;
+            pauseBtn.textContent = "정지";
+            pauseBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500', 'active:bg-emerald-700');
+            pauseBtn.classList.add('bg-amber-600', 'hover:bg-amber-500', 'active:bg-amber-700');
+        }
+
+        // 초속(m/s)을 시속(km/h)으로 변환하는 보조 함수
+        function formatSpeedString(msSpeed) {
+            const kmh = msSpeed * 3.6;
+            return `${msSpeed.toLocaleString()} m/s (${kmh.toLocaleString()} km/h)`;
+        }
+
+        // 슬라이더 바인딩 (일시 정지 중에는 비행 상태를 건드리지 않는다)
+        vIn.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            vVal.textContent = formatSpeedString(val);
+            if (!isSim && !isPaused && ball) {
+                ball.vx = val;
+                ball.speed = val;
+                draw();
+            }
+        });
+
+        hIn.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            hVal.textContent = `${val} km`;
+            if (!isSim && !isPaused) {
+                const hMeters = val * 1000;
+                if (ball) {
+                    ball.py = -(R_EARTH + hMeters);
+                    ball.alt = hMeters;
+                }
+                draw();
+            }
+        });
+
+        gIn.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            gVal.textContent = `${val.toFixed(1)}x`;
+        });
+
+        mIn.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            mVal.textContent = `${val.toLocaleString()} kg`;
+        });
+
+        // ==========================================
+        // 뷰어 제어 로직 (줌 & 화면 이동)
+        // ==========================================
+        function setZoom(factor) {
+            zoomFactor = Math.max(0.15, Math.min(12.0, factor));
+            scaleDisplay.textContent = `배율: ${zoomFactor.toFixed(2)}x`;
+            invalidateTrajCache();
+            draw();
+        }
+
+        zoomInBtn.addEventListener('click', () => setZoom(zoomFactor * 1.2));
+        zoomOutBtn.addEventListener('click', () => setZoom(zoomFactor / 1.2));
+        
+        // 줌 및 이동 시점 원상 복구
+        viewResetBtn.addEventListener('click', () => {
+            panX = 0;
+            panY = 0;
+            setZoom(1.0);
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSpeed = 0.08;
+            if (e.deltaY < 0) {
+                setZoom(zoomFactor * (1 + zoomSpeed));
+            } else {
+                setZoom(zoomFactor * (1 - zoomSpeed));
+            }
+        }, { passive: false });
+
+        // 화면 드래그(Pan) + 두 손가락 핀치 줌 이벤트 리스너
+        const activePointers = new Map(); // pointerId -> {x, y}
+        let pinchStartDist = 0;
+        let pinchStartZoom = 1.0;
+
+        function pointerDistance() {
+            const pts = [...activePointers.values()];
+            const dx = pts[0].x - pts[1].x;
+            const dy = pts[0].y - pts[1].y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            canvas.setPointerCapture(e.pointerId);
+
+            if (activePointers.size === 2) {
+                // 핀치 시작: 드래그를 멈추고 기준 거리를 기록
+                isDragging = false;
+                pinchStartDist = pointerDistance();
+                pinchStartZoom = zoomFactor;
+            } else if (activePointers.size === 1) {
+                isDragging = true;
+                lastPointerX = e.clientX;
+                lastPointerY = e.clientY;
+                canvas.style.cursor = 'grabbing';
+            }
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!activePointers.has(e.pointerId)) return;
+            activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+            if (activePointers.size === 2 && pinchStartDist > 0) {
+                setZoom(pinchStartZoom * (pointerDistance() / pinchStartDist));
+                return;
+            }
+
+            if (!isDragging) return;
+            panX += e.clientX - lastPointerX;
+            panY += e.clientY - lastPointerY;
+            lastPointerX = e.clientX;
+            lastPointerY = e.clientY;
+            draw();
+        });
+
+        function endPointer(e) {
+            activePointers.delete(e.pointerId);
+            if (activePointers.size < 2) pinchStartDist = 0;
+            if (activePointers.size === 1) {
+                // 한 손가락이 남으면 그 손가락 기준으로 드래그를 이어간다
+                const rest = [...activePointers.values()][0];
+                isDragging = true;
+                lastPointerX = rest.x;
+                lastPointerY = rest.y;
+            } else if (activePointers.size === 0) {
+                isDragging = false;
+                canvas.style.cursor = 'grab';
+            }
+        }
+
+        canvas.addEventListener('pointerup', endPointer);
+        canvas.addEventListener('pointercancel', endPointer);
+
+        // ==========================================
+        // 렌더링 및 창 크기 조정
+        // ==========================================
+        function resize() {
+            const size = Math.min(wrapper.clientWidth, wrapper.clientHeight);
+            canvas.width = size;
+            canvas.height = size;
+            cx = cy = size / 2;
+
+            BASE_DRAW_R = size * 0.25;
+            trajCache.width = size;
+            trajCache.height = size;
+            invalidateTrajCache();
+
+            if (!isSim && ball) {
+                const h = parseFloat(hIn.value) * 1000;
+                ball.px = 0;
+                ball.py = -(R_EARTH + h);
+            }
+            draw();
+        }
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('orientationchange', () => {
+            setTimeout(resize, 200);
+        });
+        setTimeout(resize, 100);
+
+        // 시뮬레이터 화면 그리기
+        function draw() {
+            // 변환(트랜스폼) 초기화
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            // 깊은 우주 배경색 (화면 이동과 무관하게 전체를 채움)
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#020617';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 화면 이동(Pan) 변환 적용
+            ctx.translate(panX, panY);
+            
+            // 실시간 스케일 계산 (기본 스케일에 줌 팩터 곱함)
+            const currentScale = (BASE_DRAW_R / R_EARTH) * zoomFactor;
+            const currentDrawR = BASE_DRAW_R * zoomFactor;
+
+            // 대기 아우라 광운 효과
+            ctx.beginPath();
+            ctx.arc(cx, cy, currentDrawR + (8 * zoomFactor), 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(14, 165, 233, 0.12)';
+            ctx.fill();
+
+            // 지구 본체 구체 내부
+            ctx.beginPath();
+            ctx.arc(cx, cy, currentDrawR, 0, Math.PI * 2);
+            
+            // 그라디언트 객체 캐싱 최적화 (매 프레임 생성 방지)
+            if (!cachedEarthGrad || cachedDrawR !== currentDrawR || cachedCx !== cx) {
+                cachedEarthGrad = ctx.createRadialGradient(cx - (10 * zoomFactor), cy - (10 * zoomFactor), 5 * zoomFactor, cx, cy, currentDrawR);
+                cachedEarthGrad.addColorStop(0, '#10b981'); // 대륙
+                cachedEarthGrad.addColorStop(0.7, '#0284c7'); // 바다
+                cachedEarthGrad.addColorStop(1, '#020d24'); // 음영
+                cachedDrawR = currentDrawR;
+                cachedCx = cx;
+            }
+            ctx.fillStyle = cachedEarthGrad;
+            ctx.fill();
+
+            // 선명한 지표면 경계선 (네온 아우라)
+            ctx.beginPath();
+            ctx.arc(cx, cy, currentDrawR, 0, Math.PI * 2);
+            ctx.strokeStyle = '#38bdf8'; // 확실하게 돋보이는 스카이블루 경계
+            ctx.lineWidth = Math.max(1, 2 * zoomFactor); // 배율에 연동된 동적 굵기
+            ctx.stroke();
+
+            // 발사 타워(높이) 그리기
+            const hValCurrent = parseFloat(hIn.value) * 1000;
+            const hPx = hValCurrent * currentScale;
+            ctx.strokeStyle = '#f43f5e';
+            ctx.lineWidth = Math.max(1.5, 2 * zoomFactor);
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - currentDrawR);
+            ctx.lineTo(cx, cy - (currentDrawR + hPx));
+            ctx.stroke();
+
+            // 물리 좌표 궤적을 화면 좌표 폴리라인으로 그리는 공용 함수
+            function strokeTraj(target, traj, style, width) {
+                if (traj.length < 2) return;
+                target.beginPath();
+                target.strokeStyle = style;
+                target.lineWidth = width;
+                target.moveTo(cx + traj[0].px * currentScale, cy + traj[0].py * currentScale);
+                for (let i = 1; i < traj.length; i++) {
+                    target.lineTo(cx + traj[i].px * currentScale, cy + traj[i].py * currentScale);
+                }
+                target.stroke();
+            }
+
+            // 지난 궤적들은 오프스크린 캐시에서 가져온다 (줌/리사이즈/목록 변경 시에만 재렌더)
+            const liveTraj = isSim ? currentTraj : null;
+            if (!trajCacheValid) {
+                trajCacheCtx.clearRect(0, 0, trajCache.width, trajCache.height);
+                for (const traj of allTrajectories) {
+                    if (traj === liveTraj) continue;
+                    strokeTraj(trajCacheCtx, traj, 'rgba(234, 179, 8, 0.45)', 1.5);
+                }
+                trajCacheValid = true;
+            }
+            ctx.drawImage(trajCache, 0, 0);
+
+            // 비행 중인 최신 궤적만 매 프레임 밝게 그린다
+            if (liveTraj) {
+                strokeTraj(ctx, liveTraj, '#facc15', 2.0);
+            }
+
+            // 실시간 대포알 그리기
+            const currentBall = ball || {
+                px: 0,
+                py: -(R_EARTH + hValCurrent)
+            };
+            const bX = cx + currentBall.px * currentScale;
+            const bY = cy + currentBall.py * currentScale;
+            const bR = Math.max(2, 4.5 * Math.sqrt(zoomFactor));
+
+            // 그림자(Glow) 효과 최적화 (비싼 연산인 shadowBlur 대신 투명 원 겹쳐 그리기)
+            ctx.beginPath();
+            ctx.arc(bX, bY, bR * 1.8, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(244, 63, 94, 0.4)';
+            ctx.fill();
+
+            // 코어 구체 그리기
+            ctx.beginPath();
+            ctx.arc(bX, bY, bR, 0, Math.PI * 2);
+            ctx.fillStyle = '#f43f5e';
+            ctx.fill();
+        }
+
+        // ==========================================
+        // 물리 연산 루프
+        // ==========================================
+        function step() {
+            if (!isSim || !ball) return;
+
+            // 정밀한 물리 작용 및 고속 공전 처리를 위한 다중 프레임 연산
+            const steps = 150; 
+            const dt = 0.4; 
+            const gMult = parseFloat(gIn.value);
+            const GM_g = G * M_EARTH * gMult;
+
+            for (let i = 0; i < steps; i++) {
+                const px = ball.px;
+                const py = ball.py;
+                const rSq = px * px + py * py;
+                const r = Math.sqrt(rSq);
+
+                if (r <= R_EARTH) {
+                    isSim = false;
+                    statusDisplay.textContent = "지구 표면 충돌 💥";
+                    statusDisplay.className = "font-bold text-red-500";
+                    speedDisplay.innerHTML = "0 m/s";
+                    altDisplay.innerHTML = "0.0 km";
+                    invalidateTrajCache();
+                    draw();
+                    return;
+                }
+
+                if (r > R_EARTH * 12) {
+                    isSim = false;
+                    // 역학적 에너지로 실제 탈출 여부 판정: E = v²/2 − GM/r ≥ 0 이면 다시 돌아오지 않는다
+                    const specificEnergy = 0.5 * (ball.vx * ball.vx + ball.vy * ball.vy) - GM_g / r;
+                    if (specificEnergy >= 0) {
+                        statusDisplay.textContent = "탈출 속도 도달, 중력권 이탈 🌌";
+                        statusDisplay.className = "font-bold text-teal-400";
+                    } else {
+                        statusDisplay.textContent = "매우 큰 타원 궤도 (표시 범위 이탈) 🔭";
+                        statusDisplay.className = "font-bold text-sky-400";
+                    }
+                    invalidateTrajCache();
+                    draw();
+                    return;
+                }
+
+                if (ball.t > 600000) {
+                    isSim = false;
+                    statusDisplay.textContent = "안정적 순환 공전 🔄";
+                    statusDisplay.className = "font-bold text-emerald-400";
+                    invalidateTrajCache();
+                    draw();
+                    return;
+                }
+
+                // 가속도 식 최적화: a = GM / r^2, 벡터 분해시 ax = a * (px/r) = GM * px / r^3
+                const a_factor = GM_g / (rSq * r);
+                ball.vx -= a_factor * px * dt;
+                ball.vy -= a_factor * py * dt;
+                ball.px += ball.vx * dt;
+                ball.py += ball.vy * dt;
+                ball.t += dt;
+            }
+            
+            // 루프 바깥에서 단 1번만 계산하여 수학 연산량 대폭 감소
+            ball.speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+            ball.alt = Math.sqrt(ball.px * ball.px + ball.py * ball.py) - R_EARTH;
+
+            // 화면 연산 좌표가 아닌 우주 순수 물리 좌표만 누적 (스케일 독립)
+            if (currentTraj) {
+                currentTraj.push({ px: ball.px, py: ball.py });
+                // 궤적 길이 초과 시 앞부분을 한 번에 잘라낸다 (매 프레임 O(n) shift 방지)
+                if (currentTraj.length > 2500) {
+                    currentTraj.splice(0, 250);
+                }
+            }
+
+            // DOM 렌더링 스로틀링: 4프레임당 1회만 업데이트
+            frameCount++;
+            if (frameCount % 4 === 0) {
+                statusDisplay.textContent = "비행 중 💫";
+                statusDisplay.className = "font-bold text-amber-400";
+                timeDisplay.innerHTML = `${Math.round(ball.t).toLocaleString()} <span class='text-slate-500 font-normal'>초</span>`;
+                altDisplay.innerHTML = `${(ball.alt / 1000).toFixed(1)} <span class='text-slate-500 font-normal'>km</span>`;
+                speedDisplay.innerHTML = `${Math.round(ball.speed).toLocaleString()} <span class='text-slate-500 font-normal'>m/s</span>`;
+            }
+
+            draw();
+            if (isSim) {
+                animId = requestAnimationFrame(step);
+            }
+        }
+
+        // 일시 정지/재개 이벤트
+        pauseBtn.addEventListener('click', () => {
+            if (!ball || (!isSim && !isPaused)) return; // 실행 중인 시뮬레이션이 없으면 무시
+
+            if (isPaused) {
+                // 재개
+                isPaused = false;
+                isSim = true;
+                pauseBtn.textContent = "정지";
+                pauseBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500', 'active:bg-emerald-700');
+                pauseBtn.classList.add('bg-amber-600', 'hover:bg-amber-500', 'active:bg-amber-700');
+                statusDisplay.textContent = "비행 중 💫";
+                step();
+            } else {
+                // 일시 정지
+                isPaused = true;
+                isSim = false;
+                cancelAnimationFrame(animId);
+                pauseBtn.textContent = "재개";
+                pauseBtn.classList.remove('bg-amber-600', 'hover:bg-amber-500', 'active:bg-amber-700');
+                pauseBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500', 'active:bg-emerald-700');
+                statusDisplay.textContent = "일시 정지 ⏸️";
+            }
+        });
+
+        // 발사 이벤트
+        fireBtn.addEventListener('click', () => {
+            cancelAnimationFrame(animId);
+            resetPauseBtn();
+            
+            const h = parseFloat(hIn.value) * 1000;
+            const v = parseFloat(vIn.value);
+
+            ball = {
+                px: 0, 
+                py: -(R_EARTH + h),
+                vx: v, 
+                vy: 0,
+                t: 0, 
+                alt: h, 
+                speed: v
+            };
+            
+            // 새로운 궤적 배열을 생성하여 전체 궤적 목록에 추가
+            currentTraj = [{ px: ball.px, py: ball.py }];
+            allTrajectories.push(currentTraj);
+            invalidateTrajCache();
+
+            isSim = true;
+            step();
+        });
+
+        // 초기화 이벤트
+        resetBtn.addEventListener('click', () => {
+            cancelAnimationFrame(animId);
+            resetPauseBtn();
+            isSim = false;
+            allTrajectories = []; // 모든 누적 궤적 삭제
+            currentTraj = null;
+            ball = null;
+            invalidateTrajCache();
+
+            panX = 0;
+            panY = 0;
+            setZoom(1.0);
+            
+            statusDisplay.textContent = "대기 중";
+            statusDisplay.className = "font-bold text-indigo-400";
+            timeDisplay.innerHTML = "0 <span class='text-slate-500 font-normal'>초</span>";
+            altDisplay.innerHTML = "--- <span class='text-slate-500 font-normal'>km</span>";
+            speedDisplay.innerHTML = "--- <span class='text-slate-500 font-normal'>m/s</span>";
+            draw();
+        });
+    </script>
+</body>
+</html>
