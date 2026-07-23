@@ -499,17 +499,22 @@
             octx.stroke();
 
             // ── 돋보기: 달이 본그림자를 통과하는 모습 확대 ──
-            drawShadowInset(w, h, rOrb, rMoon, umbW, penW);
+            drawShadowInset(w, h);
         }
 
-        // 본그림자 통과 돋보기 (우주 시점 오른쪽 위)
-        function drawShadowInset(w, h, rOrb, rMoon, umbW, penW) {
-            const iw = Math.min(220, Math.max(170, w * 0.26));
-            const ih = Math.min(168, h * 0.38);
+        // 본그림자 통과 돋보기 (우주 시점 상단 중앙)
+        // 각도 공간으로 그린다 — 그림자 진입 시점이 실제 월식 시각과 정확히 일치하고,
+        // 달을 화면 배율과 무관하게 크게 보여줄 수 있다.
+        function drawShadowInset(w, h) {
+            const iw = Math.min(240, Math.max(180, w * 0.28));
+            const ih = Math.min(178, h * 0.4);
             const ix = Math.max(80, (w - iw) / 2), iy = 10;
             const icx = ix + iw / 2, icy = iy + ih / 2;
-            // 그림자 폭 기준으로 확대 배율 결정 (달의 하루 경로는 위아래로 잘려 보여도 됨)
-            const Z = (ih / 2 - 12) / (penW + rMoon * 3);
+            // 달을 최대한 크게: 반그림자 전체가 상자에 들어가는 한도 내에서
+            const Rm = Math.min(17, (ih / 2 - 8) * R_MOON_DEG / R_PEN_DEG);
+            const S = Rm / R_MOON_DEG;
+            const e = moonAngleDeg(T);
+            const yOf = ee => icy - ee * S; // 각도(도) → 화면 y (위가 진행 방향)
 
             octx.save();
             octx.fillStyle = 'rgba(2, 6, 23, 0.92)';
@@ -521,46 +526,47 @@
             octx.rect(ix, iy, iw, ih);
             octx.clip();
 
-            // 반그림자·본그림자 띠 (달 궤도 부근에서는 거의 수평 띠로 보임)
-            octx.fillStyle = 'rgba(100, 116, 139, 0.2)';
-            octx.fillRect(ix, icy - penW * Z, iw, penW * Z * 2);
+            // 반그림자: 본그림자에 가까울수록 어두워지는 그라데이션 띠
+            const pgTop = octx.createLinearGradient(0, yOf(R_PEN_DEG), 0, icy);
+            pgTop.addColorStop(0, 'rgba(100, 116, 139, 0.06)');
+            pgTop.addColorStop(1, 'rgba(100, 116, 139, 0.5)');
+            octx.fillStyle = pgTop;
+            octx.fillRect(ix, yOf(R_PEN_DEG), iw, R_PEN_DEG * S);
+            const pgBot = octx.createLinearGradient(0, yOf(-R_PEN_DEG), 0, icy);
+            pgBot.addColorStop(0, 'rgba(100, 116, 139, 0.06)');
+            pgBot.addColorStop(1, 'rgba(100, 116, 139, 0.5)');
+            octx.fillStyle = pgBot;
+            octx.fillRect(ix, icy, iw, R_PEN_DEG * S);
+
+            // 본그림자 띠
             octx.fillStyle = 'rgba(2, 6, 23, 0.95)';
-            octx.fillRect(ix, icy - umbW * Z, iw, umbW * Z * 2);
+            octx.fillRect(ix, yOf(R_UMB_DEG), iw, R_UMB_DEG * S * 2);
             octx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
             octx.setLineDash([3, 3]);
-            [umbW, -umbW, penW, -penW].forEach(yv => {
+            [R_UMB_DEG, -R_UMB_DEG, R_PEN_DEG, -R_PEN_DEG].forEach(v => {
                 octx.beginPath();
-                octx.moveTo(ix, icy - yv * Z); octx.lineTo(ix + iw, icy - yv * Z);
+                octx.moveTo(ix, yOf(v)); octx.lineTo(ix + iw, yOf(v));
                 octx.stroke();
             });
             octx.setLineDash([]);
 
-            // 달의 이동 궤적 (그림자 중심 기준 상대 좌표, y반전)
-            const rel = t => {
-                const a = moonAngleDeg(t) * DEG;
-                return [icx + (rOrb * (Math.cos(a) - 1)) * Z, icy - (rOrb * Math.sin(a)) * Z];
-            };
+            // 달의 이동 경로 (아래→위, 지나온 길 실선 / 남은 길 점선)
             octx.strokeStyle = 'rgba(251, 191, 36, 0.7)';
             octx.lineWidth = 1.5;
             octx.beginPath();
-            for (let k = 0; k <= 40; k++) {
-                const p = rel(T * k / 40);
-                if (k === 0) octx.moveTo(p[0], p[1]); else octx.lineTo(p[0], p[1]);
-            }
+            octx.moveTo(icx, yOf(moonAngleDeg(0)));
+            octx.lineTo(icx, yOf(e));
             octx.stroke();
             octx.setLineDash([2, 4]);
             octx.strokeStyle = 'rgba(251, 191, 36, 0.3)';
             octx.beginPath();
-            for (let k = 0; k <= 40; k++) {
-                const p = rel(T + (24 - T) * k / 40);
-                if (k === 0) octx.moveTo(p[0], p[1]); else octx.lineTo(p[0], p[1]);
-            }
+            octx.moveTo(icx, yOf(e));
+            octx.lineTo(icx, yOf(moonAngleDeg(24)));
             octx.stroke();
             octx.setLineDash([]);
 
-            // 달 (월식 그림자 렌더링 재사용)
-            const mp = rel(T);
-            drawEclipsedMoon(octx, mp[0], mp[1], Math.max(6, rMoon * Z), moonAngleDeg(T));
+            // 달: 본그림자를 향한 가장자리(진입 방향)부터 어두워지고 붉어진다
+            drawEclipsedMoon(octx, icx, yOf(e), Rm, 0, e);
 
             // 라벨
             octx.font = 'bold 9px sans-serif';
@@ -569,12 +575,14 @@
             octx.font = '8px sans-serif';
             octx.fillStyle = 'rgba(148,163,184,0.8)';
             octx.fillText('본그림자', ix + 8, icy + 3);
-            octx.fillText('반그림자', ix + 8, icy - (umbW + (penW - umbW) * 0.45) * Z + 3);
+            octx.fillText('반그림자', ix + 8, yOf((R_UMB_DEG + R_PEN_DEG) / 2) + 3);
             octx.restore();
         }
 
-        // ===== 월식 상태의 달 그리기 (하늘 뷰 & 확대 뷰 공용) =====
-        function drawEclipsedMoon(g, x, y, R, e) {
+        // ===== 월식 상태의 달 그리기 (하늘 뷰·확대 뷰·돋보기 공용) =====
+        // (eX, eY): 달 중심에서 본그림자 중심까지의 각거리(도). 그림자를 향한
+        // 가장자리부터 어두워지고 붉어진다.
+        function drawEclipsedMoon(g, x, y, R, eX, eY = 0) {
             const S = R / R_MOON_DEG; // px per degree
             g.save();
             // 달 본체
@@ -590,22 +598,39 @@
             }
             // 그림자 (달 원 안쪽으로 클리핑)
             g.beginPath(); g.arc(x, y, R, 0, PI2); g.clip();
-            const ux = x + e * S; // 본그림자 중심 (e<0: 동쪽=왼쪽)
+            const ux = x + eX * S;
+            const uy = y + eY * S;
+            const ur = R_UMB_DEG * S;
             const pr = R_PEN_DEG * S;
-            const pg = g.createRadialGradient(ux, y, pr * 0.5, ux, y, pr);
-            pg.addColorStop(0, 'rgba(15, 23, 42, 0.5)');
+
+            // 반그림자: 본그림자 가장자리에 가까울수록 밝기가 점점 줄어든다
+            const pg = g.createRadialGradient(ux, uy, ur, ux, uy, pr);
+            pg.addColorStop(0, 'rgba(15, 23, 42, 0.78)');
+            pg.addColorStop(0.55, 'rgba(15, 23, 42, 0.35)');
             pg.addColorStop(1, 'rgba(15, 23, 42, 0)');
-            g.beginPath(); g.arc(ux, y, pr, 0, PI2);
+            g.beginPath(); g.arc(ux, uy, pr, 0, PI2);
             g.fillStyle = pg; g.fill();
 
-            const ur = R_UMB_DEG * S;
-            const ug = g.createRadialGradient(ux, y, ur * 0.25, ux, y, ur);
+            // 본그림자: 어둡고, 가장자리는 지구 대기를 통과한 붉은 빛
+            const ug = g.createRadialGradient(ux, uy, ur * 0.25, ux, uy, ur);
             ug.addColorStop(0, 'rgba(20, 4, 6, 0.97)');
             ug.addColorStop(0.82, 'rgba(69, 10, 10, 0.95)');
             ug.addColorStop(1, 'rgba(153, 27, 27, 0.8)');
-            g.beginPath(); g.arc(ux, y, ur, 0, PI2);
+            g.beginPath(); g.arc(ux, uy, ur, 0, PI2);
             g.fillStyle = ug; g.fill();
             g.restore();
+        }
+
+        // 달의 겉보기 밝기 (%) — 반그림자·본그림자 진입 정도에 따라 감소
+        function moonBrightness(e) {
+            const d = Math.abs(e);
+            const p1 = R_PEN_DEG + R_MOON_DEG;
+            const u1 = R_UMB_DEG + R_MOON_DEG;
+            const u2 = R_UMB_DEG - R_MOON_DEG;
+            if (d >= p1) return 100;
+            if (d >= u1) return 100 - 45 * (p1 - d) / (p1 - u1); // 반영식: 100 → 55%
+            if (d > u2)  return 55 - 50 * (u1 - d) / (u1 - u2);  // 부분식: 55 → 5%
+            return 3;                                            // 개기식: 붉은 빛만
         }
 
         // ===== 관찰자 하늘 =====
@@ -697,6 +722,16 @@
             zctx.font = 'bold 12px sans-serif';
             zctx.fillStyle = '#e2e8f0';
             zctx.fillText(ph.label, 12, 20);
+
+            // 달 밝기 게이지 — 반그림자에 들어가면서부터 어두워진다
+            const br = moonBrightness(st.e);
+            zctx.font = '10px sans-serif';
+            zctx.fillStyle = '#94a3b8';
+            zctx.fillText(`달 밝기 ${br.toFixed(0)}%`, 12, 38);
+            zctx.fillStyle = 'rgba(148,163,184,0.25)';
+            zctx.fillRect(12, 43, 72, 5);
+            zctx.fillStyle = br > 50 ? '#fde68a' : (br > 10 ? '#f59e0b' : '#b91c1c');
+            zctx.fillRect(12, 43, 72 * br / 100, 5);
             if (st.alt <= -3) {
                 zctx.fillStyle = 'rgba(148,163,184,0.8)';
                 zctx.font = '10px sans-serif';
