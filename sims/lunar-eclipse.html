@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>월식 시뮬레이터</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        button, input[type="range"] {
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 6px; cursor: pointer;
+            background: #1e293b; border-radius: 3px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 18px; width: 18px; border-radius: 50%;
+            background: #f59e0b; cursor: pointer;
+            -webkit-appearance: none; margin-top: -6px;
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+        }
+        canvas { display: block; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-3 md:p-6">
+
+    <div class="max-w-6xl mx-auto flex flex-col gap-4">
+        <!-- 헤더 -->
+        <div>
+            <a href="../index.html" class="inline-flex items-center gap-1.5 text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors mb-2 w-fit">🏠 홈</a>
+            <h1 class="text-xl md:text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-red-400 bg-clip-text text-transparent">🌒 월식 시뮬레이터</h1>
+            <p class="text-xs text-slate-400 mt-1">월식이 일어나는 하루 동안, 우주에서 본 지구·달의 움직임과 지구 위 관찰자가 보는 하늘을 동시에 관찰합니다. <span class="text-slate-500">(크기와 거리는 실제 비율이 아닙니다)</span></p>
+        </div>
+
+        <div class="flex flex-col lg:flex-row gap-4">
+            <!-- 왼쪽: 시각화 -->
+            <div class="flex-1 flex flex-col gap-4 min-w-0">
+                <!-- 우주 시점 -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 md:p-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest">🛰️ 우주에서 본 모습 (북극 위에서)</h2>
+                        <span class="text-[10px] text-slate-500 font-mono">지구 자전·달 공전: 시계 반대 방향</span>
+                    </div>
+                    <div id="orbitWrap" class="w-full h-[300px] md:h-[380px] bg-[#020617] rounded-xl overflow-hidden">
+                        <canvas id="orbitCanvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- 관찰자 시점 -->
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    <div class="md:col-span-3 bg-slate-900 border border-slate-800 rounded-2xl p-3 md:p-4">
+                        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">🧍 관찰자가 보는 하늘 (남쪽을 바라봄)</h2>
+                        <div id="skyWrap" class="w-full h-[240px] rounded-xl overflow-hidden">
+                            <canvas id="skyCanvas"></canvas>
+                        </div>
+                    </div>
+                    <div class="md:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-3 md:p-4">
+                        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">🔭 달 확대 (월식 화면)</h2>
+                        <div id="zoomWrap" class="w-full h-[240px] bg-[#020617] rounded-xl overflow-hidden">
+                            <canvas id="zoomCanvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 오른쪽: 제어 및 정보 -->
+            <div class="w-full lg:w-[320px] flex flex-col gap-4">
+                <!-- 시각 표시 -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                    <div class="flex items-end justify-between">
+                        <div>
+                            <div class="text-[10px] text-slate-500">현재 시각</div>
+                            <div class="flex items-end gap-2">
+                                <span id="clockDisplay" class="text-4xl font-mono font-extrabold text-amber-400">12:00</span>
+                                <span id="dayTag" class="text-[10px] text-slate-500 pb-1.5">첫째 날</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-[10px] text-slate-500">월식 단계</div>
+                            <div id="phaseDisplay" class="text-sm font-bold text-slate-200">보름달 (평상)</div>
+                        </div>
+                    </div>
+
+                    <!-- 시간 슬라이더 -->
+                    <div class="mt-4">
+                        <input type="range" id="timeSlider" min="0" max="24" step="0.02" value="0">
+                        <div class="flex justify-between text-[9px] text-slate-500 font-mono mt-1">
+                            <span>정오</span><span>18시</span><span>자정</span><span>6시</span><span>정오</span>
+                        </div>
+                    </div>
+
+                    <!-- 재생 제어 -->
+                    <div class="flex gap-2 mt-3">
+                        <button id="playBtn" class="flex-1 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-sm transition-colors">▶ 재생</button>
+                        <button id="resetBtn" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg text-sm border border-slate-700 transition-colors">처음으로</button>
+                    </div>
+                    <div class="flex gap-1.5 mt-2">
+                        <button data-speed="1" class="speedBtn flex-1 py-1.5 text-[11px] rounded-md bg-slate-800 text-slate-400 border border-slate-700">1분/초</button>
+                        <button data-speed="5" class="speedBtn flex-1 py-1.5 text-[11px] rounded-md bg-amber-600 text-white font-bold">5분/초</button>
+                        <button data-speed="15" class="speedBtn flex-1 py-1.5 text-[11px] rounded-md bg-slate-800 text-slate-400 border border-slate-700">15분/초</button>
+                    </div>
+                </div>
+
+                <!-- 관측 정보 -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">관찰자의 달 관측 정보</div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                            <div class="text-[9px] text-slate-500">달의 고도</div>
+                            <div class="text-lg font-mono font-bold text-sky-300"><span id="altDisplay">--</span>°</div>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                            <div class="text-[9px] text-slate-500">달의 방향</div>
+                            <div id="azDisplay" class="text-lg font-mono font-bold text-emerald-400">--</div>
+                        </div>
+                    </div>
+                    <div id="visibilityNote" class="text-[10px] text-slate-500 leading-relaxed bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                        달이 지평선 아래에 있습니다.
+                    </div>
+                </div>
+
+                <!-- 주요 시각 바로가기 -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2.5">주요 시각 바로가기</div>
+                    <div class="grid grid-cols-2 gap-1.5 text-[11px]" id="jumpButtons"></div>
+                </div>
+
+                <!-- 설명 -->
+                <div class="text-[10px] text-slate-500 leading-relaxed bg-slate-900 p-3 rounded-xl border border-slate-800">
+                    <strong class="text-slate-400">💡 관찰 포인트:</strong>
+                    보름달은 해가 질 때(18시) 동쪽에서 떠서 자정에 남쪽 하늘 높이 뜨고, 해 뜰 때(6시) 서쪽으로 집니다.
+                    달이 지구의 <span class="text-slate-300">본그림자</span> 속으로 들어가면 월식이 일어나며,
+                    개기 월식 때 달은 지구 대기를 통과한 붉은 빛 때문에 <span class="text-red-400">붉게</span> 보입니다.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const PI2 = Math.PI * 2;
+        const DEG = Math.PI / 180;
+
+        // ===== 물리 상수 (각도 단위: 도) =====
+        const R_MOON_DEG = 0.26;  // 달의 겉보기 반지름
+        const R_UMB_DEG  = 0.70;  // 달 거리에서 본그림자 반지름
+        const R_PEN_DEG  = 1.25;  // 달 거리에서 반그림자 반지름
+        const MOON_SPEED = 0.55;  // 그림자에 대한 달의 상대 속도 (도/시간)
+        const EARTH_SPIN = 15;    // 지구 자전 속도 (도/시간)
+
+        // T: 정오(12:00)부터 흐른 시간 (0~24h). T=12 → 자정, 최대식.
+        let T = 0;
+        let playing = false;
+        let speedMinPerSec = 5; // 재생 속도: 실제 1초당 시뮬레이션 몇 분
+        let lastTs = null;
+
+        // ===== 주요 시각 계산 =====
+        const contact = d => 12 - d / MOON_SPEED; // 최대식(자정) 기준 d도 떨어진 시각
+        const EVENTS = [
+            { t: 6,                                label: '🌕 달이 뜬다 (18:00)' },
+            { t: contact(R_PEN_DEG + R_MOON_DEG),  label: '🌫️ 반영식 시작' },
+            { t: contact(R_UMB_DEG + R_MOON_DEG),  label: '🌘 부분식 시작' },
+            { t: contact(R_UMB_DEG - R_MOON_DEG),  label: '🔴 개기식 시작' },
+            { t: 12,                               label: '🌑 최대식 (자정)' },
+            { t: 24 - contact(R_UMB_DEG - R_MOON_DEG), label: '🌒 개기식 끝' },
+            { t: 24 - contact(R_UMB_DEG + R_MOON_DEG), label: '🌔 부분식 끝' },
+            { t: 18,                               label: '🌇 달이 진다 (6:00)' },
+        ];
+
+        // ===== 기하 계산 =====
+        // 좌표계: 지구 중심 원점, 태양은 -x 방향(왼쪽) 멀리. 북극 위에서 본 모습(반시계 회전).
+        function moonAngleDeg(t) { return MOON_SPEED * (t - 12); }        // +x축 기준, 그림자 중심 = 0도
+        function observerAngleDeg(t) { return 180 + EARTH_SPIN * t; }     // 정오에 태양쪽(-x)을 향함
+
+        function getState(t) {
+            const e = moonAngleDeg(t);                 // 달-그림자 중심 각거리 (부호 포함)
+            const mA = e * DEG;
+            const oA = observerAngleDeg(t) * DEG;
+            const moonDirEC = [Math.cos(mA), Math.sin(mA)];   // 지구 중심에서 달 방향
+            const zenith = [Math.cos(oA), Math.sin(oA)];
+            const east = [-Math.sin(oA), Math.cos(oA)];       // 자전(반시계) 방향 = 동쪽
+            // 관찰자 기준 달 방향 (시차 포함: 궤도 반지름 60, 지구 반지름 1 스케일)
+            const mx = 60 * moonDirEC[0] - zenith[0];
+            const my = 60 * moonDirEC[1] - zenith[1];
+            const mLen = Math.hypot(mx, my);
+            const moonDir = [mx / mLen, my / mLen];
+            const cosZ = zenith[0] * moonDir[0] + zenith[1] * moonDir[1];
+            const alt = 90 - Math.acos(Math.max(-1, Math.min(1, cosZ))) / DEG;   // 달의 고도
+            const eastDot = east[0] * moonDir[0] + east[1] * moonDir[1];         // >0 동쪽
+            // 태양 (매우 멀리 -x 방향)
+            const sunDir = [-1, 0];
+            const cosZs = zenith[0] * sunDir[0] + zenith[1] * sunDir[1];
+            const sunAlt = 90 - Math.acos(Math.max(-1, Math.min(1, cosZs))) / DEG;
+            const sunEastDot = east[0] * sunDir[0] + east[1] * sunDir[1];
+            return { e, alt, eastDot, sunAlt, sunEastDot, oA, mA };
+        }
+
+        function eclipsePhase(e) {
+            const d = Math.abs(e);
+            if (d >= R_PEN_DEG + R_MOON_DEG) return { key: 'none',    label: '보름달 (평상)',  color: 'text-slate-200' };
+            if (d >= R_UMB_DEG + R_MOON_DEG) return { key: 'pen',     label: '반영식',        color: 'text-slate-400' };
+            if (d >  R_UMB_DEG - R_MOON_DEG) return { key: 'partial', label: '부분 월식 🌘',   color: 'text-amber-400' };
+            return { key: 'total', label: '개기 월식 🔴', color: 'text-red-400' };
+        }
+
+        // ===== DOM =====
+        const orbitCanvas = document.getElementById('orbitCanvas');
+        const skyCanvas = document.getElementById('skyCanvas');
+        const zoomCanvas = document.getElementById('zoomCanvas');
+        const octx = orbitCanvas.getContext('2d');
+        const sctx = skyCanvas.getContext('2d');
+        const zctx = zoomCanvas.getContext('2d');
+
+        const timeSlider = document.getElementById('timeSlider');
+        const clockDisplay = document.getElementById('clockDisplay');
+        const dayTag = document.getElementById('dayTag');
+        const phaseDisplay = document.getElementById('phaseDisplay');
+        const altDisplay = document.getElementById('altDisplay');
+        const azDisplay = document.getElementById('azDisplay');
+        const visibilityNote = document.getElementById('visibilityNote');
+        const playBtn = document.getElementById('playBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // 주요 시각 버튼 생성
+        const jumpWrap = document.getElementById('jumpButtons');
+        EVENTS.forEach(ev => {
+            const btn = document.createElement('button');
+            const clock = formatClock(ev.t);
+            btn.className = 'py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md border border-slate-700 text-left transition-colors';
+            btn.innerHTML = `${ev.label}<br><span class="font-mono text-[10px] text-amber-400/80">${clock}</span>`;
+            btn.addEventListener('click', () => { T = ev.t; syncSlider(); });
+            jumpWrap.appendChild(btn);
+        });
+
+        function formatClock(t) {
+            const total = (12 + t) % 24;
+            const h = Math.floor(total);
+            const m = Math.floor((total - h) * 60);
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+
+        // ===== 별 배경 (초기 1회 생성) =====
+        const STARS = Array.from({ length: 90 }, () => [Math.random(), Math.random(), Math.random()]);
+
+        // ===== 캔버스 크기 =====
+        function fitCanvas(canvas, wrap) {
+            const w = wrap.clientWidth, h = wrap.clientHeight;
+            if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+                canvas.width = w; canvas.height = h;
+            }
+            return canvas.width > 0 && canvas.height > 0;
+        }
+        function resizeAll() {
+            fitCanvas(orbitCanvas, document.getElementById('orbitWrap'));
+            fitCanvas(skyCanvas, document.getElementById('skyWrap'));
+            fitCanvas(zoomCanvas, document.getElementById('zoomWrap'));
+        }
+        window.addEventListener('resize', resizeAll);
+
+        // ===== 우주 시점 =====
+        function drawOrbit(st) {
+            const w = orbitCanvas.width, h = orbitCanvas.height;
+            octx.clearRect(0, 0, w, h);
+            octx.fillStyle = '#020617';
+            octx.fillRect(0, 0, w, h);
+
+            // 별
+            octx.fillStyle = 'rgba(148,163,184,0.5)';
+            for (let i = 0; i < 40; i++) {
+                const s = STARS[i];
+                octx.fillRect(s[0] * w, s[1] * h, s[2] > 0.5 ? 1.5 : 1, 1);
+            }
+
+            const cx = w * 0.44, cy = h / 2;
+            const rEarth = Math.min(w, h) * 0.085;
+            const rOrb = Math.min(w * 0.5, h / 2) - 26;
+            const rMoon = Math.max(6, rEarth * 0.27);
+
+            // 그림자 폭 (달 확대 화면과 같은 비율)
+            const umbW = (R_UMB_DEG / R_MOON_DEG) * rMoon;
+            const penW = (R_PEN_DEG / R_MOON_DEG) * rMoon;
+            const shadowLen = rOrb + rMoon * 4;
+
+            // 태양 빛 (왼쪽에서)
+            const sunX = 26;
+            const grad = octx.createRadialGradient(0, cy, 5, 0, cy, 130);
+            grad.addColorStop(0, 'rgba(250, 204, 21, 0.6)');
+            grad.addColorStop(1, 'rgba(250, 204, 21, 0)');
+            octx.fillStyle = grad;
+            octx.fillRect(0, cy - 130, 130, 260);
+            octx.fillStyle = '#facc15';
+            octx.font = 'bold 11px sans-serif';
+            octx.fillText('☀️ 태양 빛', sunX - 12, cy - 60);
+            for (let i = -2; i <= 2; i++) {
+                const y = cy + i * 26;
+                octx.strokeStyle = 'rgba(250, 204, 21, 0.45)';
+                octx.lineWidth = 1.5;
+                octx.beginPath();
+                octx.moveTo(6, y); octx.lineTo(58, y);
+                octx.stroke();
+                octx.beginPath();
+                octx.moveTo(58, y); octx.lineTo(51, y - 4); octx.moveTo(58, y); octx.lineTo(51, y + 4);
+                octx.stroke();
+            }
+
+            // 반그림자 (퍼지는 사다리꼴)
+            octx.fillStyle = 'rgba(100, 116, 139, 0.13)';
+            octx.beginPath();
+            octx.moveTo(cx, cy - rEarth);
+            octx.lineTo(cx + shadowLen, cy - penW);
+            octx.lineTo(cx + shadowLen, cy + penW);
+            octx.lineTo(cx, cy + rEarth);
+            octx.closePath();
+            octx.fill();
+
+            // 본그림자 (좁아지는 사다리꼴)
+            octx.fillStyle = 'rgba(2, 6, 23, 0.72)';
+            octx.beginPath();
+            octx.moveTo(cx, cy - rEarth);
+            octx.lineTo(cx + shadowLen, cy - umbW);
+            octx.lineTo(cx + shadowLen, cy + umbW);
+            octx.lineTo(cx, cy + rEarth);
+            octx.closePath();
+            octx.fill();
+
+            octx.fillStyle = 'rgba(148,163,184,0.65)';
+            octx.font = '10px sans-serif';
+            octx.fillText('본그림자', cx + rOrb * 0.55, cy - 4);
+            octx.fillText('반그림자', cx + rOrb * 0.55, cy - penW * 0.75);
+
+            // 달 궤도
+            octx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+            octx.lineWidth = 1;
+            octx.setLineDash([4, 5]);
+            octx.beginPath();
+            octx.arc(cx, cy, rOrb, 0, PI2);
+            octx.stroke();
+            octx.setLineDash([]);
+
+            // 지구 (왼쪽 = 낮, 오른쪽 = 밤)
+            const eg = octx.createRadialGradient(cx - rEarth * 0.4, cy - rEarth * 0.4, rEarth * 0.2, cx, cy, rEarth);
+            eg.addColorStop(0, '#38bdf8');
+            eg.addColorStop(0.7, '#1d4ed8');
+            eg.addColorStop(1, '#172554');
+            octx.fillStyle = eg;
+            octx.beginPath();
+            octx.arc(cx, cy, rEarth, 0, PI2);
+            octx.fill();
+            // 밤 반구
+            octx.fillStyle = 'rgba(2, 6, 23, 0.62)';
+            octx.beginPath();
+            octx.arc(cx, cy, rEarth, -Math.PI / 2, Math.PI / 2);
+            octx.closePath();
+            octx.fill();
+            octx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+            octx.lineWidth = 1;
+            octx.beginPath();
+            octx.arc(cx, cy, rEarth, 0, PI2);
+            octx.stroke();
+
+            // 관찰자 + 동/서 방향 (자전에 따라 회전)
+            const ox = cx + rEarth * Math.cos(st.oA);
+            const oy = cy + rEarth * Math.sin(st.oA);
+            const zx = Math.cos(st.oA), zy = Math.sin(st.oA);
+            const ex = -Math.sin(st.oA), ey = Math.cos(st.oA);
+
+            // 지평선 (접선)
+            octx.strokeStyle = 'rgba(245, 158, 11, 0.4)';
+            octx.lineWidth = 1;
+            octx.beginPath();
+            octx.moveTo(ox - ex * 22, oy - ey * 22);
+            octx.lineTo(ox + ex * 22, oy + ey * 22);
+            octx.stroke();
+
+            // 천정 화살표
+            octx.strokeStyle = '#f59e0b';
+            octx.lineWidth = 1.5;
+            octx.beginPath();
+            octx.moveTo(ox, oy);
+            octx.lineTo(ox + zx * 16, oy + zy * 16);
+            octx.stroke();
+
+            // 동쪽/서쪽 화살표
+            octx.font = 'bold 10px sans-serif';
+            octx.strokeStyle = '#34d399';
+            octx.beginPath();
+            octx.moveTo(ox, oy); octx.lineTo(ox + ex * 15, oy + ey * 15);
+            octx.stroke();
+            octx.fillStyle = '#34d399';
+            octx.fillText('동', ox + ex * 24 - 5, oy + ey * 24 + 4);
+            octx.strokeStyle = '#fb923c';
+            octx.beginPath();
+            octx.moveTo(ox, oy); octx.lineTo(ox - ex * 15, oy - ey * 15);
+            octx.stroke();
+            octx.fillStyle = '#fb923c';
+            octx.fillText('서', ox - ex * 24 - 5, oy - ey * 24 + 4);
+
+            // 관찰자 점
+            octx.fillStyle = '#fbbf24';
+            octx.beginPath();
+            octx.arc(ox, oy, 4, 0, PI2);
+            octx.fill();
+            octx.fillStyle = '#fde68a';
+            octx.fillText('관찰자', ox + zx * 16 - 16, oy + zy * 16 - 8);
+
+            // 달
+            const mxp = cx + rOrb * Math.cos(st.mA);
+            const myp = cy + rOrb * Math.sin(st.mA);
+            const ph = eclipsePhase(st.e);
+            let moonColor = '#e7e5e4';
+            if (ph.key === 'pen') moonColor = '#b8b5b2';
+            if (ph.key === 'partial') moonColor = '#8a8683';
+            if (ph.key === 'total') moonColor = '#b91c1c';
+            octx.fillStyle = moonColor;
+            octx.beginPath();
+            octx.arc(mxp, myp, rMoon, 0, PI2);
+            octx.fill();
+            octx.fillStyle = 'rgba(226,232,240,0.8)';
+            octx.fillText('달', mxp - 5, myp - rMoon - 6);
+
+            // 달 공전 방향 화살표
+            const tx = -Math.sin(st.mA), ty = Math.cos(st.mA);
+            octx.strokeStyle = 'rgba(148,163,184,0.55)';
+            octx.lineWidth = 1.5;
+            octx.beginPath();
+            octx.moveTo(mxp + tx * (rMoon + 9), myp + ty * (rMoon + 9));
+            octx.lineTo(mxp + tx * (rMoon + 24), myp + ty * (rMoon + 24));
+            octx.stroke();
+        }
+
+        // ===== 월식 상태의 달 그리기 (하늘 뷰 & 확대 뷰 공용) =====
+        function drawEclipsedMoon(g, x, y, R, e) {
+            const S = R / R_MOON_DEG; // px per degree
+            g.save();
+            // 달 본체
+            g.beginPath(); g.arc(x, y, R, 0, PI2);
+            g.fillStyle = '#d6d3d1';
+            g.fill();
+            if (R > 30) {
+                // 크레이터 (확대 뷰 전용)
+                g.fillStyle = 'rgba(120, 113, 108, 0.4)';
+                [[-0.35, -0.25, 0.16], [0.2, 0.1, 0.22], [-0.1, 0.42, 0.12], [0.45, -0.4, 0.1]].forEach(c => {
+                    g.beginPath(); g.arc(x + c[0] * R, y + c[1] * R, c[2] * R, 0, PI2); g.fill();
+                });
+            }
+            // 그림자 (달 원 안쪽으로 클리핑)
+            g.beginPath(); g.arc(x, y, R, 0, PI2); g.clip();
+            const ux = x + e * S; // 본그림자 중심 (e<0: 동쪽=왼쪽)
+            const pr = R_PEN_DEG * S;
+            const pg = g.createRadialGradient(ux, y, pr * 0.5, ux, y, pr);
+            pg.addColorStop(0, 'rgba(15, 23, 42, 0.5)');
+            pg.addColorStop(1, 'rgba(15, 23, 42, 0)');
+            g.beginPath(); g.arc(ux, y, pr, 0, PI2);
+            g.fillStyle = pg; g.fill();
+
+            const ur = R_UMB_DEG * S;
+            const ug = g.createRadialGradient(ux, y, ur * 0.25, ux, y, ur);
+            ug.addColorStop(0, 'rgba(20, 4, 6, 0.97)');
+            ug.addColorStop(0.82, 'rgba(69, 10, 10, 0.95)');
+            ug.addColorStop(1, 'rgba(153, 27, 27, 0.8)');
+            g.beginPath(); g.arc(ux, y, ur, 0, PI2);
+            g.fillStyle = ug; g.fill();
+            g.restore();
+        }
+
+        // ===== 관찰자 하늘 =====
+        function drawSky(st) {
+            const w = skyCanvas.width, h = skyCanvas.height;
+            const horizonY = h - 34;
+            const cx = w / 2;
+            const Rs = Math.min(w / 2 - 34, horizonY - 26);
+
+            // 하늘 배경 (태양 고도에 따라)
+            let top, bottom;
+            if (st.sunAlt > 5) { top = '#60a5fa'; bottom = '#bfdbfe'; }
+            else if (st.sunAlt > -8) { top = '#1e3a8a'; bottom = '#c2660a'; }
+            else { top = '#020617'; bottom = '#0b1120'; }
+            const bg = sctx.createLinearGradient(0, 0, 0, horizonY);
+            bg.addColorStop(0, top); bg.addColorStop(1, bottom);
+            sctx.fillStyle = bg;
+            sctx.fillRect(0, 0, w, horizonY);
+
+            // 밤 별
+            if (st.sunAlt <= -8) {
+                sctx.fillStyle = 'rgba(226, 232, 240, 0.7)';
+                for (let i = 40; i < STARS.length; i++) {
+                    const s = STARS[i];
+                    const sy = s[1] * horizonY * 0.92;
+                    sctx.fillRect(s[0] * w, sy, s[2] > 0.6 ? 1.5 : 1, 1);
+                }
+            }
+
+            // 달의 이동 경로 (안내선)
+            sctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+            sctx.setLineDash([3, 5]);
+            sctx.lineWidth = 1;
+            sctx.beginPath();
+            sctx.arc(cx, horizonY, Rs, Math.PI, PI2);
+            sctx.stroke();
+            sctx.setLineDash([]);
+
+            // 태양
+            if (st.sunAlt > -3) {
+                const ss = (st.sunEastDot > 0 ? -1 : 1) * (90 - st.sunAlt) * DEG;
+                const sx = cx + Rs * Math.sin(ss);
+                const sy = horizonY - Rs * Math.cos(ss);
+                sctx.fillStyle = '#fde047';
+                sctx.beginPath(); sctx.arc(sx, sy, 11, 0, PI2); sctx.fill();
+            }
+
+            // 달
+            if (st.alt > -3) {
+                const s = (st.eastDot > 0 ? -1 : 1) * (90 - st.alt) * DEG;
+                const mx = cx + Rs * Math.sin(s);
+                const my = horizonY - Rs * Math.cos(s);
+                drawEclipsedMoon(sctx, mx, my, 13, st.e);
+            }
+
+            // 땅
+            sctx.fillStyle = '#111827';
+            sctx.fillRect(0, horizonY, w, h - horizonY);
+            sctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+            sctx.lineWidth = 1;
+            sctx.beginPath();
+            sctx.moveTo(0, horizonY); sctx.lineTo(w, horizonY);
+            sctx.stroke();
+
+            // 방위 표시 (남쪽을 바라보므로 왼쪽이 동쪽)
+            sctx.font = 'bold 12px sans-serif';
+            sctx.fillStyle = '#34d399';
+            sctx.fillText('동', 12, h - 12);
+            sctx.fillStyle = '#cbd5e1';
+            sctx.fillText('남', cx - 6, h - 12);
+            sctx.fillStyle = '#fb923c';
+            sctx.fillText('서', w - 24, h - 12);
+        }
+
+        // ===== 달 확대 =====
+        function drawZoom(st) {
+            const w = zoomCanvas.width, h = zoomCanvas.height;
+            zctx.fillStyle = '#020617';
+            zctx.fillRect(0, 0, w, h);
+            zctx.fillStyle = 'rgba(148,163,184,0.5)';
+            for (let i = 20; i < 60; i++) {
+                const s = STARS[i];
+                zctx.fillRect(s[0] * w, s[1] * h, 1, 1);
+            }
+            const R = Math.min(w, h) * 0.32;
+            drawEclipsedMoon(zctx, w / 2, h / 2, R, st.e);
+
+            const ph = eclipsePhase(st.e);
+            zctx.font = 'bold 12px sans-serif';
+            zctx.fillStyle = '#e2e8f0';
+            zctx.fillText(ph.label, 12, 20);
+            if (st.alt <= -3) {
+                zctx.fillStyle = 'rgba(148,163,184,0.8)';
+                zctx.font = '10px sans-serif';
+                zctx.fillText('※ 지금 관찰자 위치에서는 달이 지평선 아래에 있습니다', 12, h - 12);
+            }
+        }
+
+        // ===== 정보 표시 =====
+        let lastDomT = -1;
+        function updateReadouts(st) {
+            if (Math.abs(T - lastDomT) < 0.005) return;
+            lastDomT = T;
+            clockDisplay.innerText = formatClock(T);
+            dayTag.innerText = T >= 12 ? '다음 날' : '첫째 날';
+            const ph = eclipsePhase(st.e);
+            phaseDisplay.innerText = ph.label;
+            phaseDisplay.className = 'text-sm font-bold ' + ph.color;
+
+            if (st.alt > 0) {
+                altDisplay.innerText = st.alt.toFixed(0);
+                const dir = st.alt > 75 ? '남쪽 하늘 높이' : (st.eastDot > 0 ? '동쪽 하늘' : '서쪽 하늘');
+                azDisplay.innerText = dir;
+                azDisplay.className = 'text-lg font-mono font-bold ' + (st.eastDot > 0 ? 'text-emerald-400' : 'text-orange-400');
+                visibilityNote.innerText = ph.key === 'none'
+                    ? '둥근 보름달이 잘 보입니다.'
+                    : (ph.key === 'total'
+                        ? '달 전체가 본그림자에 들어가 붉게 보입니다! (개기 월식)'
+                        : (ph.key === 'partial'
+                            ? '달의 왼쪽(동쪽)부터 본그림자에 가려지고 있습니다.'
+                            : '반그림자에 들어가 달이 평소보다 약간 어둡습니다.'));
+            } else {
+                altDisplay.innerText = '--';
+                azDisplay.innerText = '지평선 아래';
+                azDisplay.className = 'text-lg font-mono font-bold text-slate-500';
+                visibilityNote.innerText = '달이 지평선 아래에 있어 보이지 않습니다. 시간을 18시 이후로 옮겨 보세요.';
+            }
+        }
+
+        // ===== 제어 =====
+        function syncSlider() {
+            timeSlider.value = T;
+            lastDomT = -1;
+        }
+        timeSlider.addEventListener('input', e => {
+            T = parseFloat(e.target.value);
+            lastDomT = -1;
+        });
+        playBtn.addEventListener('click', () => {
+            playing = !playing;
+            playBtn.innerText = playing ? '⏸ 일시정지' : '▶ 재생';
+            playBtn.classList.toggle('bg-amber-600', !playing);
+            playBtn.classList.toggle('hover:bg-amber-500', !playing);
+            playBtn.classList.toggle('bg-slate-700', playing);
+            playBtn.classList.toggle('hover:bg-slate-600', playing);
+        });
+        resetBtn.addEventListener('click', () => { T = 0; syncSlider(); });
+        document.querySelectorAll('.speedBtn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                speedMinPerSec = parseFloat(btn.dataset.speed);
+                document.querySelectorAll('.speedBtn').forEach(b => {
+                    b.className = 'speedBtn flex-1 py-1.5 text-[11px] rounded-md bg-slate-800 text-slate-400 border border-slate-700';
+                });
+                btn.className = 'speedBtn flex-1 py-1.5 text-[11px] rounded-md bg-amber-600 text-white font-bold';
+            });
+        });
+
+        // ===== 메인 루프 =====
+        function loop(ts) {
+            if (orbitCanvas.width === 0) resizeAll();
+            if (orbitCanvas.width > 0) {
+                if (playing && lastTs !== null) {
+                    const dt = Math.min(0.1, (ts - lastTs) / 1000);
+                    T += (speedMinPerSec / 60) * dt;
+                    if (T >= 24) { T = 24; playing = false; playBtn.innerText = '▶ 재생'; }
+                    timeSlider.value = T;
+                }
+                const st = getState(T);
+                drawOrbit(st);
+                drawSky(st);
+                drawZoom(st);
+                updateReadouts(st);
+            }
+            lastTs = ts;
+            requestAnimationFrame(loop);
+        }
+
+        window.onload = () => {
+            resizeAll();
+            requestAnimationFrame(loop);
+        };
+    </script>
+</body>
+</html>
