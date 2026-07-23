@@ -95,6 +95,20 @@
 <script>
     // 새 시뮬레이션을 추가하려면 sims/ 폴더에 HTML 파일을 넣고 아래 배열에 한 항목을 추가하세요.
     const SIMS = [
+        {
+            emoji: '🌍',
+            title: '뉴턴의 대포알 실험',
+            desc: '발사 속도를 바꿔 가며 만유인력에 의한 궤도 운동을 관찰합니다. 어느 속도부터 대포알이 지구를 도는 인공위성이 될까요?',
+            tags: ['물리', '3학년', '운동과 에너지'],
+            file: 'sims/newtons-cannonball.html'
+        },
+        {
+            emoji: '💨',
+            title: '이상 기체 법칙 시뮬레이터',
+            desc: '입자 400개의 충돌을 실시간으로 계산해 보일 법칙(압력-부피)과 샤를 법칙(부피-온도)을 그래프로 확인하고 JPG로 저장합니다.',
+            tags: ['화학', '1학년', '기체의 성질'],
+            file: 'sims/gas-laws.html'
+        },
     ];
 
     const grid = document.getElementById('grid');
