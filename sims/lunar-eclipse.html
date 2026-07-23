@@ -280,10 +280,11 @@
                 octx.fillRect(s[0] * w, s[1] * h, s[2] > 0.5 ? 1.5 : 1, 1);
             }
 
-            const cx = w * 0.42, cy = h / 2;
-            const rOrb = Math.min(w * 0.55, h / 2) - 22;
-            // 지구-달 거리 ≈ 지구 반지름의 12.5배로 압축 (실제 60배), 달/지구 크기비 0.27은 실제 비율
-            const rEarth = Math.max(11, rOrb * 0.08);
+            const cy = h / 2;
+            const cx = Math.max(115, w * 0.14);   // 지구를 왼쪽 끝으로
+            const rOrb = w - 52 - cx;             // 달은 오른쪽 끝까지 — 거리를 최대로 확보
+            // 지구-달 거리 ≈ 지구 반지름의 ~34배로 압축 (실제 60배), 달/지구 크기비 0.27은 실제 비율
+            const rEarth = Math.max(9, rOrb / 34);
             const rMoon = Math.max(3.5, rEarth * 0.27);
             const SX = x => cx + x;
             const SY = y => cy - y; // y축 반전: 북극 위 시점의 반시계 방향 재현
@@ -339,12 +340,16 @@
             octx.fillText('본그림자', SX(rOrb * 0.42), SY(4));
             octx.fillText('반그림자', SX(rOrb * 0.42), SY(penW + 12));
 
-            // 달 궤도 (전체, 흐리게)
+            // 달 궤도 (화면에 보이는 구간만, 흐리게)
             octx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
             octx.lineWidth = 1;
             octx.setLineDash([4, 5]);
             octx.beginPath();
-            octx.arc(cx, cy, rOrb, 0, PI2);
+            for (let k = 0; k <= 60; k++) {
+                const a = (-16 + 32 * k / 60) * DEG;
+                const px = SX(rOrb * Math.cos(a)), py = SY(rOrb * Math.sin(a));
+                if (k === 0) octx.moveTo(px, py); else octx.lineTo(px, py);
+            }
             octx.stroke();
             octx.setLineDash([]);
 
@@ -501,11 +506,10 @@
         function drawShadowInset(w, h, rOrb, rMoon, umbW, penW) {
             const iw = Math.min(220, Math.max(170, w * 0.26));
             const ih = Math.min(168, h * 0.38);
-            const ix = w - iw - 10, iy = 10;
+            const ix = Math.max(80, (w - iw) / 2), iy = 10;
             const icx = ix + iw / 2, icy = iy + ih / 2;
-            // 하루 동안 달의 상하 이동 범위에 맞춰 배율 결정
-            const dyMax = rOrb * Math.sin(moonAngleDeg(24) * DEG) + rMoon * 1.5;
-            const Z = (ih / 2 - 10) / Math.max(dyMax, penW + rMoon);
+            // 그림자 폭 기준으로 확대 배율 결정 (달의 하루 경로는 위아래로 잘려 보여도 됨)
+            const Z = (ih / 2 - 12) / (penW + rMoon * 3);
 
             octx.save();
             octx.fillStyle = 'rgba(2, 6, 23, 0.92)';
