@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>과학 시뮬레이션 실험실</title>
+<style>
+    :root {
+        --bg: #090d16;
+        --panel: #0f172a;
+        --border: #1e293b;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 2rem 1.25rem 4rem;
+    }
+    .container { max-width: 960px; margin: 0 auto; }
+    header { margin-bottom: 2.5rem; text-align: center; }
+    header h1 {
+        font-size: 2rem;
+        letter-spacing: -0.02em;
+        background: linear-gradient(90deg, #818cf8, #38bdf8, #34d399);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+    header p { color: var(--muted); margin-top: 0.6rem; font-size: 0.95rem; }
+    #grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+        gap: 1.1rem;
+    }
+    .card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        padding: 1.3rem;
+        text-decoration: none;
+        color: inherit;
+        transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    }
+    .card:hover {
+        transform: translateY(-3px);
+        border-color: var(--accent);
+        box-shadow: 0 8px 30px rgba(56, 189, 248, 0.12);
+    }
+    .card .emoji { font-size: 2rem; line-height: 1; }
+    .card h2 { font-size: 1.1rem; }
+    .card p { color: var(--muted); font-size: 0.85rem; line-height: 1.55; flex: 1; }
+    .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .tag {
+        font-size: 0.7rem;
+        color: var(--accent);
+        background: rgba(56, 189, 248, 0.1);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+        border-radius: 999px;
+        padding: 0.15rem 0.6rem;
+    }
+    .empty {
+        grid-column: 1 / -1;
+        text-align: center;
+        color: var(--muted);
+        border: 1px dashed var(--border);
+        border-radius: 1rem;
+        padding: 3rem 1rem;
+    }
+    footer { margin-top: 3rem; text-align: center; color: #475569; font-size: 0.8rem; }
+    footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🔬 과학 시뮬레이션 실험실</h1>
+        <p>중학교 과학 수업을 위한 인터랙티브 시뮬레이션 모음</p>
+    </header>
+
+    <main id="grid"></main>
+
+    <footer>
+        새 시뮬레이션 추가 방법은 <a href="https://github.com/SonYoungguk/sciencelab#readme">README</a>를 참고하세요.
+    </footer>
+</div>
+
+<script>
+    // 새 시뮬레이션을 추가하려면 sims/ 폴더에 HTML 파일을 넣고 아래 배열에 한 항목을 추가하세요.
+    const SIMS = [
+    ];
+
+    const grid = document.getElementById('grid');
+    if (SIMS.length === 0) {
+        grid.innerHTML = '<div class="empty">아직 등록된 시뮬레이션이 없습니다.<br>sims/ 폴더에 파일을 추가하고 index.html의 SIMS 배열에 등록해 주세요.</div>';
+    } else {
+        for (const sim of SIMS) {
+            const card = document.createElement('a');
+            card.className = 'card';
+            card.href = sim.file;
+            card.innerHTML = `
+                <span class="emoji">${sim.emoji}</span>
+                <h2>${sim.title}</h2>
+                <p>${sim.desc}</p>
+                <div class="tags">${sim.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+            `;
+            grid.appendChild(card);
+        }
+    }
+</script>
+</body>
+</html>
