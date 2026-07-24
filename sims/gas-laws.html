@@ -323,6 +323,7 @@
         let pistonX = 0;
         let pistonVx = 0; 
         const pistonMass = 350.0; // 관성 제어용 피스톤 질량
+        let PISTON_DAMPING = 0.95; // 피스톤 점성 마찰: 매 프레임 속도에 곱한다 (작을수록 마찰 큼)
         let externalForcePerFrame = 0; // 프레임 단위 외부 대기압
         
         // 공간 분할(Spatial Partitioning) 데이터 모델
@@ -942,7 +943,7 @@
             pistonVx -= externalForcePerFrame / pistonMass;
 
             if (frictionToggle.checked) {
-                pistonVx *= 0.98; // 임계감쇠에 가까운 점성 마찰 — 진동 없이 가장 빠르게 수렴
+                pistonVx *= PISTON_DAMPING; // 점성 마찰 (1에 가까울수록 마찰 약함)
             }
 
             pistonX += pistonVx;
