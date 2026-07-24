@@ -4,91 +4,173 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>과학 시뮬레이션 실험실</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔬</text></svg>">
 <style>
     :root {
-        --bg: #090d16;
-        --panel: #0f172a;
+        --bg: #020617;
+        --panel: #0d1526;
+        --panel-hover: #111c33;
         --border: #1e293b;
         --text: #f1f5f9;
         --muted: #94a3b8;
+        --dim: #64748b;
         --accent: #38bdf8;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
     body {
-        font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-        background: var(--bg);
+        font-family: "Pretendard", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+        background:
+            radial-gradient(1100px 500px at 85% -10%, rgba(56, 189, 248, 0.09), transparent 60%),
+            radial-gradient(900px 450px at 8% 8%, rgba(129, 140, 248, 0.09), transparent 60%),
+            radial-gradient(700px 500px at 55% 110%, rgba(52, 211, 153, 0.06), transparent 60%),
+            var(--bg);
         color: var(--text);
         min-height: 100vh;
-        padding: 2rem 1.25rem 4rem;
+        padding: 3rem 1.25rem 4rem;
+        position: relative;
+        overflow-x: hidden;
     }
-    .container { max-width: 960px; margin: 0 auto; }
-    header { margin-bottom: 2.5rem; text-align: center; }
+    /* 별 배경 */
+    .stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+    .stars span {
+        position: absolute;
+        border-radius: 50%;
+        background: #cbd5e1;
+        animation: twinkle 4s ease-in-out infinite;
+    }
+    @keyframes twinkle {
+        0%, 100% { opacity: 0.25; }
+        50% { opacity: 0.85; }
+    }
+    .container { max-width: 1020px; margin: 0 auto; position: relative; z-index: 1; }
+
+    header { text-align: center; margin-bottom: 2.2rem; }
+    .badge {
+        display: inline-flex; align-items: center; gap: 0.4rem;
+        font-size: 0.72rem; color: var(--accent);
+        background: rgba(56, 189, 248, 0.08);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+        border-radius: 999px; padding: 0.3rem 0.85rem;
+        margin-bottom: 1.1rem; letter-spacing: 0.06em;
+    }
     header h1 {
-        font-size: 2rem;
-        letter-spacing: -0.02em;
-        background: linear-gradient(90deg, #818cf8, #38bdf8, #34d399);
+        font-size: clamp(2rem, 5.5vw, 3rem);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.2;
+        background: linear-gradient(100deg, #a5b4fc 0%, #38bdf8 45%, #34d399 100%);
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;
     }
-    header p { color: var(--muted); margin-top: 0.6rem; font-size: 0.95rem; }
-    #grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
-        gap: 1.1rem;
+    header p { color: var(--muted); margin-top: 0.85rem; font-size: 0.98rem; }
+
+    /* 과목 필터 */
+    .filters {
+        display: flex; justify-content: center; flex-wrap: wrap;
+        gap: 0.5rem; margin-bottom: 1.8rem;
     }
-    .card {
-        display: flex;
-        flex-direction: column;
-        gap: 0.6rem;
+    .filters button {
+        font: inherit; font-size: 0.8rem; cursor: pointer;
+        color: var(--muted);
         background: var(--panel);
         border: 1px solid var(--border);
-        border-radius: 1rem;
-        padding: 1.3rem;
-        text-decoration: none;
-        color: inherit;
-        transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+        border-radius: 999px;
+        padding: 0.42rem 1.05rem;
+        transition: all 0.15s;
+    }
+    .filters button:hover { color: var(--text); border-color: #334155; }
+    .filters button.active {
+        color: #0f172a; font-weight: 700;
+        background: linear-gradient(100deg, #7dd3fc, #6ee7b7);
+        border-color: transparent;
+    }
+
+    #grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+        gap: 1.15rem;
+    }
+    .card {
+        display: flex; flex-direction: column; gap: 0.75rem;
+        background: linear-gradient(160deg, var(--panel), #0a101f);
+        border: 1px solid var(--border);
+        border-radius: 1.1rem;
+        padding: 1.35rem;
+        text-decoration: none; color: inherit;
+        position: relative; overflow: hidden;
+        transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+    }
+    .card::before {
+        content: '';
+        position: absolute; inset: 0;
+        background: radial-gradient(420px 190px at 20% 0%, var(--glow, rgba(56,189,248,0.10)), transparent 70%);
+        opacity: 0; transition: opacity 0.2s;
     }
     .card:hover {
-        transform: translateY(-3px);
-        border-color: var(--accent);
-        box-shadow: 0 8px 30px rgba(56, 189, 248, 0.12);
+        transform: translateY(-4px);
+        border-color: var(--edge, rgba(56, 189, 248, 0.55));
+        box-shadow: 0 14px 38px rgba(2, 6, 23, 0.7);
     }
-    .card .emoji { font-size: 2rem; line-height: 1; }
-    .card h2 { font-size: 1.1rem; }
-    .card p { color: var(--muted); font-size: 0.85rem; line-height: 1.55; flex: 1; }
+    .card:hover::before { opacity: 1; }
+    .card-top { display: flex; align-items: center; gap: 0.8rem; }
+    .emoji-tile {
+        width: 52px; height: 52px; flex: none;
+        display: grid; place-items: center;
+        font-size: 1.7rem;
+        background: var(--tile, rgba(56, 189, 248, 0.1));
+        border: 1px solid var(--edge, rgba(56, 189, 248, 0.3));
+        border-radius: 0.9rem;
+    }
+    .card h2 { font-size: 1.08rem; letter-spacing: -0.01em; }
+    .card p { color: var(--muted); font-size: 0.85rem; line-height: 1.6; flex: 1; }
+    .card-bottom { display: flex; align-items: center; justify-content: space-between; }
     .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
     .tag {
-        font-size: 0.7rem;
-        color: var(--accent);
-        background: rgba(56, 189, 248, 0.1);
-        border: 1px solid rgba(56, 189, 248, 0.25);
+        font-size: 0.68rem;
+        color: var(--tag-fg, #7dd3fc);
+        background: var(--tag-bg, rgba(56, 189, 248, 0.09));
+        border: 1px solid var(--tag-bd, rgba(56, 189, 248, 0.22));
         border-radius: 999px;
-        padding: 0.15rem 0.6rem;
+        padding: 0.14rem 0.58rem;
     }
+    .go {
+        font-size: 0.78rem; font-weight: 700;
+        color: var(--tag-fg, #7dd3fc);
+        transition: transform 0.15s;
+    }
+    .card:hover .go { transform: translateX(3px); }
+
     .empty {
-        grid-column: 1 / -1;
-        text-align: center;
-        color: var(--muted);
-        border: 1px dashed var(--border);
-        border-radius: 1rem;
-        padding: 3rem 1rem;
+        grid-column: 1 / -1; text-align: center; color: var(--dim);
+        border: 1px dashed var(--border); border-radius: 1rem; padding: 3rem 1rem;
     }
-    footer { margin-top: 3rem; text-align: center; color: #475569; font-size: 0.8rem; }
-    footer a { color: var(--muted); }
+    footer {
+        margin-top: 3.2rem; text-align: center;
+        color: var(--dim); font-size: 0.78rem; line-height: 1.9;
+    }
+    footer a { color: var(--muted); text-decoration-color: var(--border); }
+    footer a:hover { color: var(--text); }
 </style>
 </head>
 <body>
+<div class="stars" id="stars"></div>
+
 <div class="container">
     <header>
-        <h1>🔬 과학 시뮬레이션 실험실</h1>
-        <p>중학교 과학 수업을 위한 인터랙티브 시뮬레이션 모음</p>
+        <div class="badge">🔬 SCIENCE LAB · 중학교 과학</div>
+        <h1>과학 시뮬레이션 실험실</h1>
+        <p>교실에서 바로 여는 인터랙티브 과학 실험 — 클릭 한 번이면 시작됩니다.</p>
     </header>
+
+    <nav class="filters" id="filters"></nav>
 
     <main id="grid"></main>
 
     <footer>
-        새 시뮬레이션 추가 방법은 <a href="https://github.com/SonYoungguk/sciencelab#readme">README</a>를 참고하세요.
+        새 시뮬레이션 추가 방법은 <a href="https://github.com/SonYoungguk/sciencelab#readme">README</a>를 참고하세요.<br>
+        순수 HTML · CSS · JavaScript로 만들어졌습니다.
     </footer>
 </div>
 
@@ -118,23 +200,75 @@
         },
     ];
 
+    // 과목별 색상 테마
+    const SUBJECT_THEME = {
+        '물리':     { fg: '#a5b4fc', bg: 'rgba(129,140,248,0.10)', bd: 'rgba(129,140,248,0.30)', glow: 'rgba(129,140,248,0.12)' },
+        '화학':     { fg: '#6ee7b7', bg: 'rgba(52,211,153,0.10)',  bd: 'rgba(52,211,153,0.30)',  glow: 'rgba(52,211,153,0.12)' },
+        '지구과학': { fg: '#fcd34d', bg: 'rgba(251,191,36,0.10)',  bd: 'rgba(251,191,36,0.30)',  glow: 'rgba(251,191,36,0.12)' },
+        '생물':     { fg: '#f9a8d4', bg: 'rgba(244,114,182,0.10)', bd: 'rgba(244,114,182,0.30)', glow: 'rgba(244,114,182,0.12)' },
+    };
+    const DEFAULT_THEME = { fg: '#7dd3fc', bg: 'rgba(56,189,248,0.09)', bd: 'rgba(56,189,248,0.25)', glow: 'rgba(56,189,248,0.10)' };
+
+    // 별 배경 생성
+    const starsWrap = document.getElementById('stars');
+    for (let i = 0; i < 70; i++) {
+        const s = document.createElement('span');
+        const size = Math.random() < 0.85 ? 1 : 2;
+        s.style.cssText = `left:${Math.random() * 100}%; top:${Math.random() * 100}%; width:${size}px; height:${size}px; animation-delay:${(Math.random() * 4).toFixed(2)}s;`;
+        starsWrap.appendChild(s);
+    }
+
+    // 카드 렌더링
     const grid = document.getElementById('grid');
-    if (SIMS.length === 0) {
-        grid.innerHTML = '<div class="empty">아직 등록된 시뮬레이션이 없습니다.<br>sims/ 폴더에 파일을 추가하고 index.html의 SIMS 배열에 등록해 주세요.</div>';
-    } else {
-        for (const sim of SIMS) {
+    function render(filter) {
+        grid.innerHTML = '';
+        const list = filter === '전체' ? SIMS : SIMS.filter(s => s.tags.includes(filter));
+        if (list.length === 0) {
+            grid.innerHTML = '<div class="empty">이 과목의 시뮬레이션이 아직 없습니다.<br>sims/ 폴더에 파일을 추가하고 index.html의 SIMS 배열에 등록해 주세요.</div>';
+            return;
+        }
+        for (const sim of list) {
+            const theme = SUBJECT_THEME[sim.tags[0]] || DEFAULT_THEME;
             const card = document.createElement('a');
             card.className = 'card';
             card.href = sim.file;
+            card.style.setProperty('--tile', theme.bg);
+            card.style.setProperty('--edge', theme.bd);
+            card.style.setProperty('--glow', theme.glow);
+            card.style.setProperty('--tag-fg', theme.fg);
+            card.style.setProperty('--tag-bg', theme.bg);
+            card.style.setProperty('--tag-bd', theme.bd);
             card.innerHTML = `
-                <span class="emoji">${sim.emoji}</span>
-                <h2>${sim.title}</h2>
+                <div class="card-top">
+                    <span class="emoji-tile">${sim.emoji}</span>
+                    <h2>${sim.title}</h2>
+                </div>
                 <p>${sim.desc}</p>
-                <div class="tags">${sim.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+                <div class="card-bottom">
+                    <div class="tags">${sim.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+                    <span class="go">실행 →</span>
+                </div>
             `;
             grid.appendChild(card);
         }
     }
+
+    // 과목 필터 버튼
+    const subjects = ['전체', ...new Set(SIMS.map(s => s.tags[0]))];
+    const filtersWrap = document.getElementById('filters');
+    subjects.forEach((sub, i) => {
+        const btn = document.createElement('button');
+        btn.textContent = sub === '전체' ? `전체 (${SIMS.length})` : sub;
+        if (i === 0) btn.className = 'active';
+        btn.addEventListener('click', () => {
+            filtersWrap.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            render(sub);
+        });
+        filtersWrap.appendChild(btn);
+    });
+
+    render('전체');
 </script>
 </body>
 </html>

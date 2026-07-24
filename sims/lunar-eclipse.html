@@ -249,6 +249,80 @@
         // ===== 별 배경 (초기 1회 생성) =====
         const STARS = Array.from({ length: 90 }, () => [Math.random(), Math.random(), Math.random()]);
 
+        // ===== 달 표면 텍스처 (초기 1회 생성 후 모든 뷰에서 재사용) =====
+        // 실제 보름달의 앞면을 본떠 바다(어두운 현무암 평원)·크레이터·광조를 그린다.
+        const MOON_TEX = (() => {
+            const c = document.createElement('canvas');
+            c.width = c.height = 512;
+            const g = c.getContext('2d');
+            const R = 256;
+
+            // 기본 원반: 밝은 회백색, 가장자리로 갈수록 어두워지는 구형 음영
+            const base = g.createRadialGradient(R - 55, R - 55, 40, R, R, R);
+            base.addColorStop(0, '#eceae4');
+            base.addColorStop(0.65, '#d8d5cc');
+            base.addColorStop(0.92, '#b5b1a6');
+            base.addColorStop(1, '#8f8b80');
+            g.fillStyle = base;
+            g.beginPath(); g.arc(R, R, R, 0, Math.PI * 2); g.fill();
+            g.beginPath(); g.arc(R, R, R, 0, Math.PI * 2); g.clip();
+
+            // 바다(마리아): 실제 위치를 본뜬 어두운 얼룩 [x, y, 반지름, 진하기]
+            const MARIA = [
+                [0.30, 0.34, 0.20, 0.50], // 비의 바다
+                [0.18, 0.52, 0.17, 0.42], // 폭풍의 대양 (위)
+                [0.22, 0.68, 0.15, 0.38], // 폭풍의 대양 (아래)
+                [0.55, 0.30, 0.13, 0.45], // 맑음의 바다
+                [0.66, 0.42, 0.13, 0.45], // 고요의 바다
+                [0.78, 0.52, 0.10, 0.38], // 풍요의 바다
+                [0.82, 0.36, 0.08, 0.35], // 위난의 바다
+                [0.42, 0.72, 0.10, 0.30], // 구름의 바다
+                [0.44, 0.20, 0.09, 0.32], // 추위의 바다
+            ];
+            for (const [mx, my, mr, al] of MARIA) {
+                const gr = g.createRadialGradient(mx * 512, my * 512, mr * 512 * 0.2, mx * 512, my * 512, mr * 512);
+                gr.addColorStop(0, `rgba(74, 77, 86, ${Math.min(1, al + 0.12)})`);
+                gr.addColorStop(0.75, `rgba(86, 88, 96, ${al * 0.65})`);
+                gr.addColorStop(1, 'rgba(96, 98, 104, 0)');
+                g.fillStyle = gr;
+                g.beginPath(); g.arc(mx * 512, my * 512, mr * 512, 0, Math.PI * 2); g.fill();
+            }
+
+            // 크레이터: 어두운 바닥 + 한쪽 밝은 테두리
+            for (let i = 0; i < 90; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const rr = Math.sqrt(Math.random()) * 0.93;
+                const px = R + Math.cos(a) * rr * R;
+                const py = R + Math.sin(a) * rr * R;
+                const cr = 2 + Math.random() * (Math.random() < 0.15 ? 13 : 6);
+                g.fillStyle = `rgba(70, 68, 66, ${0.12 + Math.random() * 0.16})`;
+                g.beginPath(); g.arc(px, py, cr, 0, Math.PI * 2); g.fill();
+                g.strokeStyle = `rgba(240, 238, 232, ${0.10 + Math.random() * 0.12})`;
+                g.lineWidth = Math.max(1, cr * 0.22);
+                g.beginPath(); g.arc(px, py, cr, Math.PI * 0.6, Math.PI * 1.5); g.stroke();
+            }
+
+            // 티코 크레이터: 남쪽의 밝은 크레이터와 사방으로 뻗는 광조(빛줄기)
+            const tx = 0.47 * 512, ty = 0.84 * 512;
+            g.strokeStyle = 'rgba(245, 243, 236, 0.14)';
+            g.lineWidth = 1.5;
+            for (let i = 0; i < 14; i++) {
+                const ra = (i / 14) * Math.PI * 2;
+                const len = 60 + (i % 4) * 45;
+                g.beginPath();
+                g.moveTo(tx + Math.cos(ra) * 10, ty + Math.sin(ra) * 10);
+                g.lineTo(tx + Math.cos(ra) * len, ty + Math.sin(ra) * len);
+                g.stroke();
+            }
+            const tg = g.createRadialGradient(tx, ty, 1, tx, ty, 14);
+            tg.addColorStop(0, 'rgba(250, 248, 242, 0.9)');
+            tg.addColorStop(1, 'rgba(250, 248, 242, 0)');
+            g.fillStyle = tg;
+            g.beginPath(); g.arc(tx, ty, 14, 0, Math.PI * 2); g.fill();
+
+            return c;
+        })();
+
         // ===== 캔버스 크기 =====
         function fitCanvas(canvas, wrap) {
             const w = wrap.clientWidth, h = wrap.clientHeight;
@@ -585,19 +659,9 @@
         function drawEclipsedMoon(g, x, y, R, eX, eY = 0) {
             const S = R / R_MOON_DEG; // px per degree
             g.save();
-            // 달 본체
-            g.beginPath(); g.arc(x, y, R, 0, PI2);
-            g.fillStyle = '#d6d3d1';
-            g.fill();
-            if (R > 30) {
-                // 크레이터 (확대 뷰 전용)
-                g.fillStyle = 'rgba(120, 113, 108, 0.4)';
-                [[-0.35, -0.25, 0.16], [0.2, 0.1, 0.22], [-0.1, 0.42, 0.12], [0.45, -0.4, 0.1]].forEach(c => {
-                    g.beginPath(); g.arc(x + c[0] * R, y + c[1] * R, c[2] * R, 0, PI2); g.fill();
-                });
-            }
-            // 그림자 (달 원 안쪽으로 클리핑)
+            // 달 본체: 미리 그려 둔 실사풍 표면 텍스처
             g.beginPath(); g.arc(x, y, R, 0, PI2); g.clip();
+            g.drawImage(MOON_TEX, x - R, y - R, R * 2, R * 2);
             const ux = x + eX * S;
             const uy = y + eY * S;
             const ur = R_UMB_DEG * S;
