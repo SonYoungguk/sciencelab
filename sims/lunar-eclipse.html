@@ -611,13 +611,27 @@
             g.beginPath(); g.arc(ux, uy, pr, 0, PI2);
             g.fillStyle = pg; g.fill();
 
-            // 본그림자: 어둡고, 가장자리는 지구 대기를 통과한 붉은 빛
-            const ug = g.createRadialGradient(ux, uy, ur * 0.25, ux, uy, ur);
-            ug.addColorStop(0, 'rgba(20, 4, 6, 0.97)');
-            ug.addColorStop(0.82, 'rgba(69, 10, 10, 0.95)');
-            ug.addColorStop(1, 'rgba(153, 27, 27, 0.8)');
+            // 본그림자에 가려진 부분: 현실처럼 개기식 전에는 붉지 않고 그냥 어둡다
+            const ug = g.createRadialGradient(ux, uy, ur * 0.6, ux, uy, ur);
+            ug.addColorStop(0, 'rgba(4, 6, 12, 0.99)');
+            ug.addColorStop(1, 'rgba(10, 12, 20, 0.93)');
             g.beginPath(); g.arc(ux, uy, ur, 0, PI2);
             g.fillStyle = ug; g.fill();
+
+            // 개기식: 달이 본그림자에 완전히 들어가야 지구 대기를 굴절해 통과한
+            // 붉은 빛이 달을 물들인다 (경계를 지나며 수 분에 걸쳐 서서히)
+            const dDeg = Math.hypot(eX, eY);
+            const redness = Math.max(0, Math.min(1, ((R_UMB_DEG - R_MOON_DEG) - dDeg) / 0.05));
+            if (redness > 0) {
+                g.globalAlpha = redness;
+                const rg = g.createRadialGradient(ux, uy, ur * 0.15, ux, uy, ur);
+                rg.addColorStop(0, 'rgba(42, 6, 8, 0.95)');   // 본그림자 중심에 가까울수록 어두운 적갈색
+                rg.addColorStop(0.75, 'rgba(120, 24, 18, 0.9)');
+                rg.addColorStop(1, 'rgba(196, 68, 30, 0.85)'); // 가장자리는 밝은 구릿빛
+                g.beginPath(); g.arc(ux, uy, ur, 0, PI2);
+                g.fillStyle = rg; g.fill();
+                g.globalAlpha = 1;
+            }
             g.restore();
         }
 
