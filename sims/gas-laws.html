@@ -322,8 +322,8 @@
         // 자유 피스톤 변수
         let pistonX = 0;
         let pistonVx = 0; 
-        const pistonMass = 350.0; // 관성 제어용 피스톤 질량
-        let PISTON_DAMPING = 0.95; // 피스톤 점성 마찰: 매 프레임 속도에 곱한다 (작을수록 마찰 큼)
+        let pistonMass = 700.0; // 관성 제어용 피스톤 질량 (클수록 입자 충돌 잔떨림 감소)
+        let PISTON_DAMPING = 0.90; // 피스톤 점성 마찰: 매 프레임 속도에 곱한다 (작을수록 마찰 큼)
         let externalForcePerFrame = 0; // 프레임 단위 외부 대기압
         
         // 공간 분할(Spatial Partitioning) 데이터 모델
