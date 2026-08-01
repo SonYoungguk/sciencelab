@@ -158,19 +158,29 @@
                 <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">물리 변수 제어</div>
 
                 <div>
-                    <div class="flex justify-between text-xs mb-1 text-slate-300">
+                    <div class="flex justify-between items-center text-xs mb-1 text-slate-300">
                         <span>외부 압력 (Pressure)</span>
-                        <span id="presValue" class="font-mono text-cyan-400 font-bold">1.0 atm</span>
+                        <span class="flex items-center gap-1">
+                            <input type="number" id="presInput" min="0.5" max="3" step="0.1" value="1.0"
+                                   class="w-16 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-0.5 text-right font-mono text-cyan-400 font-bold text-xs focus:outline-none focus:border-cyan-500 disabled:opacity-50">
+                            <span class="font-mono text-cyan-400 font-bold">atm</span>
+                        </span>
                     </div>
                     <input type="range" id="presSlider" min="0.5" max="3" step="0.1" value="1">
+                    <div class="text-[9px] text-slate-500 mt-0.5">0.5 ~ 3.0 atm · 숫자 입력 후 Enter</div>
                 </div>
 
                 <div>
-                    <div class="flex justify-between text-xs mb-1 text-slate-300">
+                    <div class="flex justify-between items-center text-xs mb-1 text-slate-300">
                         <span>절대 온도 (Temperature)</span>
-                        <span id="tempValue" class="font-mono text-red-400 font-bold">300 K</span>
+                        <span class="flex items-center gap-1">
+                            <input type="number" id="tempInput" min="100" max="600" step="10" value="300" disabled
+                                   class="w-16 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-0.5 text-right font-mono text-red-400 font-bold text-xs focus:outline-none focus:border-red-500 disabled:opacity-50">
+                            <span class="font-mono text-red-400 font-bold">K</span>
+                        </span>
                     </div>
                     <input type="range" id="tempSlider" min="100" max="600" value="300" disabled>
+                    <div class="text-[9px] text-slate-500 mt-0.5">100 ~ 600 K · 숫자 입력 후 Enter</div>
                 </div>
 
                 <div class="flex items-center gap-3 mt-1 pt-3 border-t border-slate-800">
@@ -256,8 +266,8 @@
         
         const presSlider = document.getElementById('presSlider');
         const tempSlider = document.getElementById('tempSlider');
-        const presValue = document.getElementById('presValue');
-        const tempValue = document.getElementById('tempValue');
+        const presInput = document.getElementById('presInput');
+        const tempInput = document.getElementById('tempInput');
         const frictionToggle = document.getElementById('frictionToggle');
 
         const rawKinetic = document.getElementById('rawKinetic');
@@ -591,18 +601,38 @@
             pistonX = margin + (maxBoxWidth * (physics.volume / 100));
         }
 
-        presSlider.addEventListener('input', (e) => {
-            physics.targetPressure = parseFloat(e.target.value);
-            presValue.innerText = `${physics.targetPressure.toFixed(1)} atm`;
+        // 공용 세터: 슬라이더·숫자 입력 어느 쪽에서 바꿔도 여기로 모인다
+        function setPressure(v) {
+            v = Math.round(Math.min(3, Math.max(0.5, v)) * 10) / 10;
+            physics.targetPressure = v;
+            presSlider.value = v;
+            presInput.value = v.toFixed(1);
             updatePhysicsScales();   // 외력 재계산
             resetEquilibrium();      // 조작변인이 바뀌면 평형 평균을 다시 시작
-        });
+        }
 
-        tempSlider.addEventListener('input', (e) => {
-            physics.temperature = parseFloat(e.target.value);
-            tempValue.innerText = `${physics.temperature.toFixed(0)} K`;
+        function setTemperature(v) {
+            v = Math.round(Math.min(600, Math.max(100, v)));
+            physics.temperature = v;
+            tempSlider.value = v;
+            tempInput.value = v;
             particles.forEach(p => p.updateSpeed());
             resetEquilibrium();
+        }
+
+        presSlider.addEventListener('input', e => setPressure(parseFloat(e.target.value)));
+        tempSlider.addEventListener('input', e => setTemperature(parseFloat(e.target.value)));
+
+        // 숫자 입력: 값 확정(Enter/포커스 이탈/스피너) 시 적용, 잘못된 값은 현재 값으로 복원
+        presInput.addEventListener('change', e => {
+            const v = parseFloat(e.target.value);
+            if (isNaN(v)) { presInput.value = physics.targetPressure.toFixed(1); return; }
+            setPressure(v);
+        });
+        tempInput.addEventListener('change', e => {
+            const v = parseFloat(e.target.value);
+            if (isNaN(v)) { tempInput.value = physics.temperature; return; }
+            setTemperature(v);
         });
 
         frictionToggle.addEventListener('change', resetEquilibrium);
@@ -614,8 +644,8 @@
             physics.targetPressure = 1.0;
             presSlider.value = 1;
             tempSlider.value = 300;
-            presValue.innerText = `1.0 atm`;
-            tempValue.innerText = `300 K`;
+            presInput.value = '1.0';
+            tempInput.value = '300';
 
             pistonVx = 0;
             updatePistonPositionKinematic();
@@ -632,6 +662,8 @@
                 btnCharles.className = "flex-1 py-2 text-sm rounded-md text-slate-400 hover:text-white bg-slate-950 border-0";
                 presSlider.disabled = false;
                 tempSlider.disabled = true;
+                presInput.disabled = false;
+                tempInput.disabled = true;
                 presSlider.parentElement.style.opacity = "1";
                 tempSlider.parentElement.style.opacity = "0.4";
 
@@ -641,6 +673,8 @@
                 btnBoyle.className = "flex-1 py-2 text-sm rounded-md text-slate-400 hover:text-white bg-slate-950 border-0";
                 presSlider.disabled = true;
                 tempSlider.disabled = false;
+                presInput.disabled = true;
+                tempInput.disabled = false;
                 presSlider.parentElement.style.opacity = "0.4";
                 tempSlider.parentElement.style.opacity = "1";
 
