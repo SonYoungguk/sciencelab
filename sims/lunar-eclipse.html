@@ -50,7 +50,7 @@
         </div>
     </div>
 
-    <div class="max-w-6xl mx-auto flex flex-col gap-4">
+    <div class="w-full flex flex-col gap-4">
         <!-- 헤더 -->
         <div>
             <div class="flex items-center gap-2 mb-2">
@@ -70,7 +70,7 @@
                         <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest">🛰️ 우주에서 본 모습 (북극 위에서)</h2>
                         <span class="text-[10px] text-slate-500 font-mono">지구 자전·달 공전: 시계 반대 방향</span>
                     </div>
-                    <div id="orbitWrap" class="w-full h-[340px] md:h-[460px] bg-[#020617] rounded-xl overflow-hidden">
+                    <div id="orbitWrap" class="w-full h-[42vh] min-h-[340px] bg-[#020617] rounded-xl overflow-hidden">
                         <canvas id="orbitCanvas"></canvas>
                     </div>
                 </div>
@@ -79,13 +79,13 @@
                 <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div class="md:col-span-3 bg-slate-900 border border-slate-800 rounded-2xl p-3 md:p-4">
                         <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">🧍 관찰자가 보는 하늘 (남쪽을 바라봄)</h2>
-                        <div id="skyWrap" class="w-full h-[240px] rounded-xl overflow-hidden">
+                        <div id="skyWrap" class="w-full h-[28vh] min-h-[220px] rounded-xl overflow-hidden">
                             <canvas id="skyCanvas"></canvas>
                         </div>
                     </div>
                     <div class="md:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-3 md:p-4">
                         <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">🔭 달 확대 (월식 화면)</h2>
-                        <div id="zoomWrap" class="w-full h-[240px] bg-[#020617] rounded-xl overflow-hidden">
+                        <div id="zoomWrap" class="w-full h-[28vh] min-h-[220px] bg-[#020617] rounded-xl overflow-hidden">
                             <canvas id="zoomCanvas"></canvas>
                         </div>
                     </div>
@@ -396,7 +396,9 @@
 
             const cy = h / 2;
             const cx = Math.max(115, w * 0.14);   // 지구를 왼쪽 끝으로
-            const rOrb = w - 52 - cx;             // 달은 오른쪽 끝까지 — 거리를 최대로 확보
+            // 달은 오른쪽 끝까지 — 단, 아주 넓고 낮은 창에서는 하루 공전 경로(±6.6°)가
+            // 위아래로 잘리지 않도록 세로 방향 한계도 함께 적용
+            const rOrb = Math.min(w - 52 - cx, (h / 2 - 36) / Math.sin(moonAngleDeg(24) * DEG));
             // 지구-달 거리 ≈ 지구 반지름의 ~34배로 압축 (실제 60배), 달/지구 크기비 0.27은 실제 비율
             const rEarth = Math.max(9, rOrb / 34);
             const rMoon = Math.max(3.5, rEarth * 0.27);
