@@ -14,7 +14,7 @@
         }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col p-3 md:p-6 justify-center items-center">
+<body class="bg-slate-950 text-slate-100 h-screen flex flex-col p-3 md:p-5 overflow-y-auto lg:overflow-hidden">
 
     <!-- 사용법 안내 모달 -->
     <div id="guideModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
@@ -34,10 +34,10 @@
         </div>
     </div>
 
-    <div class="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-2xl p-3 md:p-6 shadow-2xl flex flex-col lg:flex-row gap-4 md:gap-6">
+    <div class="w-full lg:flex-1 lg:min-h-0 bg-slate-900 border border-slate-800 rounded-2xl p-3 md:p-5 shadow-2xl flex flex-col lg:flex-row gap-4 md:gap-5">
         
         <!-- 캔버스 시뮬레이션 뷰포트 (터치 및 리사이즈 지원) -->
-        <div class="flex-1 flex flex-col bg-slate-950 rounded-xl overflow-hidden border border-slate-800 relative h-[320px] sm:h-[400px] md:h-[450px]">
+        <div class="lg:flex-1 flex flex-col bg-slate-950 rounded-xl overflow-hidden border border-slate-800 relative h-[55vh] min-h-[320px] lg:h-auto lg:min-h-0">
             <div class="bg-slate-900/80 px-3 py-1.5 border-b border-slate-800 flex justify-between items-center text-[11px] md:text-xs z-10">
                 <span class="flex items-center gap-1.5">
                     <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -70,7 +70,7 @@
         </div>
 
         <!-- 파라미터 조작 및 모니터링 대시보드 -->
-        <div class="w-full lg:w-[340px] flex flex-col gap-3 md:gap-4">
+        <div class="w-full lg:w-[350px] xl:w-[380px] flex-none flex flex-col gap-3 md:gap-4 lg:min-h-0 lg:overflow-y-auto">
             <div>
                 <div class="flex items-center gap-2 mb-2">
                     <a href="../index.html" class="inline-flex items-center gap-1.5 text-[10px] md:text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors">🏠 홈</a>
@@ -238,6 +238,7 @@
         let cachedEarthGrad = null;
         let cachedDrawR = 0;
         let cachedCx = 0;
+        let cachedCy = 0;
         let frameCount = 0;
 
         // 지난 궤적 오프스크린 캐시: 줌/리사이즈/궤적 목록 변경 시에만 다시 그린다.
@@ -416,20 +417,23 @@
         // 렌더링 및 창 크기 조정
         // ==========================================
         function resize() {
-            const size = Math.min(wrapper.clientWidth, wrapper.clientHeight);
-            canvas.width = size;
-            canvas.height = size;
-            cx = cy = size / 2;
+            // 캔버스가 뷰포트 영역을 가로·세로 모두 꽉 채운다 (창 크기 변경에 따라 재계산)
+            const w = wrapper.clientWidth, h = wrapper.clientHeight;
+            if (w === 0 || h === 0) { setTimeout(resize, 200); return; } // 레이아웃 대기 후 재시도
+            canvas.width = w;
+            canvas.height = h;
+            cx = w / 2;
+            cy = h / 2;
 
-            BASE_DRAW_R = size * 0.25;
-            trajCache.width = size;
-            trajCache.height = size;
+            BASE_DRAW_R = Math.min(w, h) * 0.25;
+            trajCache.width = w;
+            trajCache.height = h;
             invalidateTrajCache();
 
             if (!isSim && ball) {
-                const h = params.h * 1000;
+                const hM = params.h * 1000;
                 ball.px = 0;
-                ball.py = -(R_EARTH + h);
+                ball.py = -(R_EARTH + hM);
             }
             draw();
         }
@@ -468,13 +472,14 @@
             ctx.arc(cx, cy, currentDrawR, 0, Math.PI * 2);
             
             // 그라디언트 객체 캐싱 최적화 (매 프레임 생성 방지)
-            if (!cachedEarthGrad || cachedDrawR !== currentDrawR || cachedCx !== cx) {
+            if (!cachedEarthGrad || cachedDrawR !== currentDrawR || cachedCx !== cx || cachedCy !== cy) {
                 cachedEarthGrad = ctx.createRadialGradient(cx - (10 * zoomFactor), cy - (10 * zoomFactor), 5 * zoomFactor, cx, cy, currentDrawR);
                 cachedEarthGrad.addColorStop(0, '#10b981'); // 대륙
                 cachedEarthGrad.addColorStop(0.7, '#0284c7'); // 바다
                 cachedEarthGrad.addColorStop(1, '#020d24'); // 음영
                 cachedDrawR = currentDrawR;
                 cachedCx = cx;
+                cachedCy = cy;
             }
             ctx.fillStyle = cachedEarthGrad;
             ctx.fill();
