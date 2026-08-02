@@ -32,10 +32,31 @@
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen p-3 md:p-6">
 
+    <!-- 사용법 안내 모달 -->
+    <div id="guideModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div class="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h2 class="text-lg font-bold bg-gradient-to-r from-orange-400 to-red-400 bg-clip-text text-transparent mb-1">🌒 월식 시뮬레이터 — 사용법</h2>
+            <p class="text-xs text-slate-400 mb-4">월식이 일어나는 하루를 우주에서, 그리고 지구 위 관찰자의 눈으로 동시에 지켜봅시다.</p>
+            <ol class="flex flex-col gap-2.5 text-xs text-slate-300 leading-relaxed mb-4">
+                <li class="flex gap-2"><span class="flex-none w-5 h-5 grid place-items-center rounded-full bg-orange-500/20 text-orange-300 font-bold text-[10px]">1</span><span><b class="text-slate-100">시간 진행</b> — ▶재생 버튼(1·5·15분/초 배속) 또는 시간 슬라이더로 하루(정오~다음날 정오)를 진행합니다.</span></li>
+                <li class="flex gap-2"><span class="flex-none w-5 h-5 grid place-items-center rounded-full bg-orange-500/20 text-orange-300 font-bold text-[10px]">2</span><span><b class="text-slate-100">주요 시각 바로가기</b> — 달이 뜨는 시각, 부분식·개기식 시작 등으로 한 번에 이동할 수 있습니다.</span></li>
+                <li class="flex gap-2"><span class="flex-none w-5 h-5 grid place-items-center rounded-full bg-orange-500/20 text-orange-300 font-bold text-[10px]">3</span><span><b class="text-slate-100">세 화면 관찰</b> — 위: 우주 시점(자전하는 관찰자의 동/서 방향, 그림자 통과 돋보기) / 아래: 관찰자가 보는 하늘과 달 확대 화면.</span></li>
+            </ol>
+            <div class="text-[11px] text-slate-400 bg-slate-950 border border-slate-800 rounded-lg p-3 mb-4">💡 <b class="text-slate-300">관찰 포인트:</b> 보름달은 해가 질 때(18시) 동쪽에서 떠서 자정에 남쪽 하늘 높이 뜹니다. 자정 무렵 달이 지구의 본그림자에 완전히 들어가면 왜 붉게 보일까요?</div>
+            <label class="flex items-center gap-2 text-[11px] text-slate-500 mb-3 cursor-pointer">
+                <input type="checkbox" id="guideSkip" class="accent-orange-500"> 다음부터 이 안내를 보지 않기
+            </label>
+            <button id="guideClose" class="w-full py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-lg text-sm transition-colors">시작하기</button>
+        </div>
+    </div>
+
     <div class="max-w-6xl mx-auto flex flex-col gap-4">
         <!-- 헤더 -->
         <div>
-            <a href="../index.html" class="inline-flex items-center gap-1.5 text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors mb-2 w-fit">🏠 홈</a>
+            <div class="flex items-center gap-2 mb-2">
+                <a href="../index.html" class="inline-flex items-center gap-1.5 text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors">🏠 홈</a>
+                <button id="guideOpen" class="inline-flex items-center gap-1.5 text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors">❓ 사용법</button>
+            </div>
             <h1 class="text-xl md:text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-red-400 bg-clip-text text-transparent">🌒 월식 시뮬레이터</h1>
             <p class="text-xs text-slate-400 mt-1">월식이 일어나는 하루 동안, 우주에서 본 지구·달의 움직임과 지구 위 관찰자가 보는 하늘을 동시에 관찰합니다. <span class="text-slate-500">(달 크기는 지구의 0.27배 실제 비율, 지구-달 거리는 화면에 맞게 압축)</span></p>
         </div>
@@ -145,6 +166,25 @@
     </div>
 
     <script>
+        // ===== 사용법 안내 모달 =====
+        (() => {
+            const modal = document.getElementById('guideModal');
+            const skip = document.getElementById('guideSkip');
+            const KEY = 'sciencelab-guide-lunar';
+            try { if (localStorage.getItem(KEY)) modal.style.display = 'none'; } catch (e) {}
+            document.getElementById('guideClose').addEventListener('click', () => {
+                try {
+                    if (skip.checked) localStorage.setItem(KEY, '1');
+                    else localStorage.removeItem(KEY);
+                } catch (e) {}
+                modal.style.display = 'none';
+            });
+            document.getElementById('guideOpen').addEventListener('click', () => {
+                skip.checked = false;
+                modal.style.display = 'flex';
+            });
+        })();
+
         const PI2 = Math.PI * 2;
         const DEG = Math.PI / 180;
 

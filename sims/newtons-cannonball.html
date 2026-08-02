@@ -16,6 +16,24 @@
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col p-3 md:p-6 justify-center items-center">
 
+    <!-- 사용법 안내 모달 -->
+    <div id="guideModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div class="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h2 class="text-lg font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent mb-1">🌍 뉴턴의 대포알 실험 — 사용법</h2>
+            <p class="text-xs text-slate-400 mb-4">아주 높은 산에서 대포알을 수평으로 쏘면 어떻게 될까요? 뉴턴의 사고 실험을 직접 해 봅시다.</p>
+            <ol class="flex flex-col gap-2.5 text-xs text-slate-300 leading-relaxed mb-4">
+                <li class="flex gap-2"><span class="flex-none w-5 h-5 grid place-items-center rounded-full bg-indigo-500/20 text-indigo-300 font-bold text-[10px]">1</span><span><b class="text-slate-100">변수 설정</b> — 초기 속도·발사 고도·중력·질량을 슬라이더로 조절하거나 숫자를 직접 입력합니다.</span></li>
+                <li class="flex gap-2"><span class="flex-none w-5 h-5 grid place-items-center rounded-full bg-indigo-500/20 text-indigo-300 font-bold text-[10px]">2</span><span><b class="text-slate-100">발사!</b> — 궤적이 그려집니다. <b>정지</b>로 멈췄다 재개할 수 있고, <b>초기화</b>로 궤적을 지웁니다.</span></li>
+                <li class="flex gap-2"><span class="flex-none w-5 h-5 grid place-items-center rounded-full bg-indigo-500/20 text-indigo-300 font-bold text-[10px]">3</span><span><b class="text-slate-100">화면 조작</b> — 마우스 휠·두 손가락 핀치로 확대, 드래그로 이동합니다.</span></li>
+            </ol>
+            <div class="text-[11px] text-slate-400 bg-slate-950 border border-slate-800 rounded-lg p-3 mb-4">💡 <b class="text-slate-300">관찰 포인트:</b> 속도를 조금씩 올려 보세요. 어느 속도부터 대포알이 떨어지지 않고 지구를 도는 인공위성이 될까요? 더 빠르게 쏘면 지구를 탈출할 수도 있습니다.</div>
+            <label class="flex items-center gap-2 text-[11px] text-slate-500 mb-3 cursor-pointer">
+                <input type="checkbox" id="guideSkip" class="accent-indigo-500"> 다음부터 이 안내를 보지 않기
+            </label>
+            <button id="guideClose" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-sm transition-colors">시작하기</button>
+        </div>
+    </div>
+
     <div class="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-2xl p-3 md:p-6 shadow-2xl flex flex-col lg:flex-row gap-4 md:gap-6">
         
         <!-- 캔버스 시뮬레이션 뷰포트 (터치 및 리사이즈 지원) -->
@@ -54,7 +72,10 @@
         <!-- 파라미터 조작 및 모니터링 대시보드 -->
         <div class="w-full lg:w-[340px] flex flex-col gap-3 md:gap-4">
             <div>
-                <a href="../index.html" class="inline-flex items-center gap-1.5 text-[10px] md:text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors mb-2 w-fit">🏠 홈</a>
+                <div class="flex items-center gap-2 mb-2">
+                    <a href="../index.html" class="inline-flex items-center gap-1.5 text-[10px] md:text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors">🏠 홈</a>
+                    <button id="guideOpen" class="inline-flex items-center gap-1.5 text-[10px] md:text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors">❓ 사용법</button>
+                </div>
                 <h1 class="text-lg md:text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">🌍 뉴턴의 대포알 실험</h1>
                 <p class="text-[10px] md:text-xs text-slate-400">지구 만유인력에 따른 궤도 역학 시뮬레이터</p>
             </div>
@@ -148,6 +169,25 @@
     </div>
 
     <script>
+        // ===== 사용법 안내 모달 =====
+        (() => {
+            const modal = document.getElementById('guideModal');
+            const skip = document.getElementById('guideSkip');
+            const KEY = 'sciencelab-guide-newton';
+            try { if (localStorage.getItem(KEY)) modal.style.display = 'none'; } catch (e) {}
+            document.getElementById('guideClose').addEventListener('click', () => {
+                try {
+                    if (skip.checked) localStorage.setItem(KEY, '1');
+                    else localStorage.removeItem(KEY);
+                } catch (e) {}
+                modal.style.display = 'none';
+            });
+            document.getElementById('guideOpen').addEventListener('click', () => {
+                skip.checked = false;
+                modal.style.display = 'flex';
+            });
+        })();
+
         const canvas = document.getElementById('simCanvas');
         const ctx = canvas.getContext('2d');
         const wrapper = document.getElementById('canvas-wrapper');
