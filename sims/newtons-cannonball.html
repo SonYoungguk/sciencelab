@@ -83,36 +83,55 @@
             <div class="space-y-3 md:space-y-4 text-xs md:text-sm">
                 <!-- 초기 속도 조절 -->
                 <div>
-                    <div class="flex justify-between mb-1">
+                    <div class="flex justify-between items-center mb-1">
                         <label class="font-medium text-slate-300">초기 속도 (v₀)</label>
-                        <span id="vVal" class="text-indigo-400 font-mono font-semibold">3,000 m/s (10,800 km/h)</span>
+                        <span class="flex items-center gap-1">
+                            <input type="number" id="vInput" min="0" max="12000" step="100" value="3000"
+                                   class="w-20 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-0.5 text-right font-mono text-indigo-400 font-semibold text-xs focus:outline-none focus:border-indigo-500">
+                            <span class="text-indigo-400 font-mono font-semibold text-xs">m/s</span>
+                        </span>
                     </div>
                     <input type="range" id="velocity" min="0" max="12000" step="100" value="3000" class="w-full accent-indigo-500 bg-slate-800 h-2 rounded-lg appearance-none cursor-pointer py-1">
+                    <div class="text-[9px] text-slate-500 mt-0.5"><span id="vKmh">= 10,800 km/h</span> · 0 ~ 12,000 · 숫자 입력 후 Enter</div>
                 </div>
 
                 <!-- 발사 높이 조절 -->
                 <div>
-                    <div class="flex justify-between mb-1">
+                    <div class="flex justify-between items-center mb-1">
                         <label class="font-medium text-slate-300">발사 고도 (h)</label>
-                        <span id="hVal" class="text-indigo-400 font-mono font-semibold">200 km</span>
+                        <span class="flex items-center gap-1">
+                            <input type="number" id="hInput" min="50" max="1500" step="50" value="200"
+                                   class="w-20 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-0.5 text-right font-mono text-indigo-400 font-semibold text-xs focus:outline-none focus:border-indigo-500">
+                            <span class="text-indigo-400 font-mono font-semibold text-xs">km</span>
+                        </span>
                     </div>
                     <input type="range" id="height" min="50" max="1500" step="50" value="200" class="w-full accent-indigo-500 bg-slate-800 h-2 rounded-lg appearance-none cursor-pointer py-1">
+                    <div class="text-[9px] text-slate-500 mt-0.5">50 ~ 1,500 km</div>
                 </div>
 
                 <!-- 중력세기 상수 비율 조절 -->
                 <div>
-                    <div class="flex justify-between mb-1">
+                    <div class="flex justify-between items-center mb-1">
                         <label class="font-medium text-slate-300">중력 가속도 배율 (g)</label>
-                        <span id="gVal" class="text-indigo-400 font-mono font-semibold">1.0x</span>
+                        <span class="flex items-center gap-1">
+                            <input type="number" id="gInput" min="0.1" max="3" step="0.1" value="1.0"
+                                   class="w-20 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-0.5 text-right font-mono text-indigo-400 font-semibold text-xs focus:outline-none focus:border-indigo-500">
+                            <span class="text-indigo-400 font-mono font-semibold text-xs">배</span>
+                        </span>
                     </div>
                     <input type="range" id="gravity" min="0.1" max="3.0" step="0.1" value="1.0" class="w-full accent-indigo-500 bg-slate-800 h-2 rounded-lg appearance-none cursor-pointer py-1">
+                    <div class="text-[9px] text-slate-500 mt-0.5">0.1 ~ 3.0배</div>
                 </div>
 
                 <!-- 대포알 질량 조절 -->
                 <div>
-                    <div class="flex justify-between mb-1">
+                    <div class="flex justify-between items-center mb-1">
                         <label class="font-medium text-slate-300">대포알 질량 (m)</label>
-                        <span id="mVal" class="text-indigo-400 font-mono font-semibold">100 kg</span>
+                        <span class="flex items-center gap-1">
+                            <input type="number" id="mInput" min="1" max="2000" step="10" value="100"
+                                   class="w-20 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-0.5 text-right font-mono text-indigo-400 font-semibold text-xs focus:outline-none focus:border-indigo-500">
+                            <span class="text-indigo-400 font-mono font-semibold text-xs">kg</span>
+                        </span>
                     </div>
                     <input type="range" id="mass" min="1" max="2000" step="10" value="100" class="w-full accent-indigo-500 bg-slate-800 h-2 rounded-lg appearance-none cursor-pointer py-1">
                     <p class="text-[9px] md:text-[10px] text-slate-500 mt-1 italic leading-relaxed">※ 갈릴레이와 뉴턴의 낙하 법칙에 따라 물체의 낙하 속도와 궤적은 질량에 영향을 받지 않습니다.</p>
@@ -138,10 +157,11 @@
         const gIn = document.getElementById('gravity');
         const mIn = document.getElementById('mass');
 
-        const vVal = document.getElementById('vVal');
-        const hVal = document.getElementById('hVal');
-        const gVal = document.getElementById('gVal');
-        const mVal = document.getElementById('mVal');
+        const vInput = document.getElementById('vInput');
+        const hInput = document.getElementById('hInput');
+        const gInput = document.getElementById('gInput');
+        const mInput = document.getElementById('mInput');
+        const vKmh = document.getElementById('vKmh');
 
         const statusDisplay = document.getElementById('statusDisplay');
         const timeDisplay = document.getElementById('timeDisplay');
@@ -198,45 +218,64 @@
             pauseBtn.classList.add('bg-amber-600', 'hover:bg-amber-500', 'active:bg-amber-700');
         }
 
-        // 초속(m/s)을 시속(km/h)으로 변환하는 보조 함수
-        function formatSpeedString(msSpeed) {
-            const kmh = msSpeed * 3.6;
-            return `${msSpeed.toLocaleString()} m/s (${kmh.toLocaleString()} km/h)`;
-        }
+        // 물리 변수 상태: 슬라이더·숫자 입력 어느 쪽으로 바꿔도 여기에 모이고,
+        // 물리 계산은 전부 이 값을 읽는다 (슬라이더의 step 반올림에 얽매이지 않음)
+        const params = { v: 3000, h: 200, g: 1.0, m: 100 };
 
-        // 슬라이더 바인딩 (일시 정지 중에는 비행 상태를 건드리지 않는다)
-        vIn.addEventListener('input', (e) => {
-            const val = parseInt(e.target.value);
-            vVal.textContent = formatSpeedString(val);
+        // 공용 세터 (범위 클램프 + 슬라이더/입력 칸 동기화, 일시 정지 중에는 비행 상태 보호)
+        function setV(val) {
+            if (isNaN(val)) { vInput.value = params.v; return; }
+            params.v = Math.round(Math.min(12000, Math.max(0, val)));
+            vIn.value = params.v;
+            vInput.value = params.v;
+            vKmh.textContent = `= ${Math.round(params.v * 3.6).toLocaleString()} km/h`;
             if (!isSim && !isPaused && ball) {
-                ball.vx = val;
-                ball.speed = val;
+                ball.vx = params.v;
+                ball.speed = params.v;
                 draw();
             }
-        });
+        }
 
-        hIn.addEventListener('input', (e) => {
-            const val = parseInt(e.target.value);
-            hVal.textContent = `${val} km`;
+        function setH(val) {
+            if (isNaN(val)) { hInput.value = params.h; return; }
+            params.h = Math.round(Math.min(1500, Math.max(50, val)));
+            hIn.value = params.h;
+            hInput.value = params.h;
             if (!isSim && !isPaused) {
-                const hMeters = val * 1000;
+                const hMeters = params.h * 1000;
                 if (ball) {
                     ball.py = -(R_EARTH + hMeters);
                     ball.alt = hMeters;
                 }
                 draw();
             }
-        });
+        }
 
-        gIn.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            gVal.textContent = `${val.toFixed(1)}x`;
-        });
+        function setG(val) {
+            if (isNaN(val)) { gInput.value = params.g.toFixed(1); return; }
+            params.g = Math.round(Math.min(3, Math.max(0.1, val)) * 10) / 10;
+            gIn.value = params.g;
+            gInput.value = params.g.toFixed(1);
+        }
 
-        mIn.addEventListener('input', (e) => {
-            const val = parseInt(e.target.value);
-            mVal.textContent = `${val.toLocaleString()} kg`;
-        });
+        function setM(val) {
+            if (isNaN(val)) { mInput.value = params.m; return; }
+            params.m = Math.round(Math.min(2000, Math.max(1, val)));
+            mIn.value = params.m;
+            mInput.value = params.m;
+        }
+
+        // 슬라이더 (드래그) 바인딩
+        vIn.addEventListener('input', e => setV(parseFloat(e.target.value)));
+        hIn.addEventListener('input', e => setH(parseFloat(e.target.value)));
+        gIn.addEventListener('input', e => setG(parseFloat(e.target.value)));
+        mIn.addEventListener('input', e => setM(parseFloat(e.target.value)));
+
+        // 숫자 입력 (Enter/포커스 이탈/스피너) 바인딩
+        vInput.addEventListener('change', e => setV(parseFloat(e.target.value)));
+        hInput.addEventListener('change', e => setH(parseFloat(e.target.value)));
+        gInput.addEventListener('change', e => setG(parseFloat(e.target.value)));
+        mInput.addEventListener('change', e => setM(parseFloat(e.target.value)));
 
         // ==========================================
         // 뷰어 제어 로직 (줌 & 화면 이동)
@@ -348,7 +387,7 @@
             invalidateTrajCache();
 
             if (!isSim && ball) {
-                const h = parseFloat(hIn.value) * 1000;
+                const h = params.h * 1000;
                 ball.px = 0;
                 ball.py = -(R_EARTH + h);
             }
@@ -408,7 +447,7 @@
             ctx.stroke();
 
             // 발사 타워(높이) 그리기
-            const hValCurrent = parseFloat(hIn.value) * 1000;
+            const hValCurrent = params.h * 1000;
             const hPx = hValCurrent * currentScale;
             ctx.strokeStyle = '#f43f5e';
             ctx.lineWidth = Math.max(1.5, 2 * zoomFactor);
@@ -487,7 +526,7 @@
             // 정밀한 물리 작용 및 고속 공전 처리를 위한 다중 프레임 연산
             const steps = 150; 
             const dt = 0.4; 
-            const gMult = parseFloat(gIn.value);
+            const gMult = params.g;
             const GM_g = G * M_EARTH * gMult;
 
             for (let i = 0; i < steps; i++) {
@@ -603,8 +642,8 @@
             cancelAnimationFrame(animId);
             resetPauseBtn();
             
-            const h = parseFloat(hIn.value) * 1000;
-            const v = parseFloat(vIn.value);
+            const h = params.h * 1000;
+            const v = params.v;
 
             ball = {
                 px: 0, 
