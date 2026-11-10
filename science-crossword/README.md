@@ -16,17 +16,19 @@
 - 전체 단원 섞기, 직접 입력(`용어 | 설명` 한 줄에 하나)
 - 한 판 단어 수: 10 / 15 / 20 / 목록 전체
 
-## 현재 상태
+## 구성
 
-`index.html`은 claude.ai 아티팩트용 버전입니다. 실시간 데이터 저장에 claude.ai 아티팩트 저장소(`window.claude.use("db")`)를 사용하므로, 지금은 claude.ai 안에서만 동작합니다. 브라우저에서 파일을 직접 열면 "실시간 저장소를 쓸 수 없습니다"라는 안내가 나옵니다.
+- `index.html`: 게임 전체 (빌드 도구 없는 단일 HTML). Vercel에 정적 페이지로 배포합니다.
+- `supabase/schema.sql`: Supabase 데이터베이스 구조.
+- 실시간 데이터: Supabase (`science-crossword` 프로젝트, 서울 리전)
+  - `rooms` 테이블: 방 번호(`code`)와 방 상태(`data` JSON: 상태, 퍼즐, 시작·종료 시각, 1등 정보)
+  - `players` 테이블: 방 번호, 학생 ID(`pid`), 학생 상태(`data` JSON: 이름, 자리, 맞힌 단어, 오답 수)
+  - Realtime으로 변경 사항을 받고, 연결이 끊겨도 5초마다 다시 읽어 따라잡습니다.
+  - 모든 기기는 Supabase 서버 시계에 맞춰 카운트다운을 계산합니다.
+  - 3일 넘게 쓰지 않은 방은 새 방이 만들어질 때 자동으로 지워집니다.
+- 로그인이 없는 교실용 게임이라, 방 번호를 아는 사람은 누구나 그 방의 데이터를 읽고 쓸 수 있습니다. 개인정보(실명 등)는 저장하지 않는 것을 권장합니다.
 
-## 다음 단계: Supabase + Vercel
+## 다른 Supabase 프로젝트로 옮길 때
 
-학생이 claude.ai 계정 없이 링크만으로 참가할 수 있도록 옮길 예정입니다.
-
-- 저장소 계층(`S.db.doc(...)`, `collection(...)`, `onSnapshot`)을 Supabase 테이블과 Realtime 구독으로 바꿉니다.
-  - `rooms` (방 번호, 상태, 퍼즐, 시작·종료 시각, 1등 정보)
-  - `players` (방 번호, 이름, 자리, 게임 ID, 맞힌 단어, 오답 수)
-- 정적 페이지로 Vercel에 배포합니다.
-
-데이터 구조는 지금 코드의 `rooms/{방번호}`, `rooms/{방번호}/players/{학생ID}` 문서를 그대로 따릅니다.
+1. Supabase SQL Editor에서 `supabase/schema.sql`을 실행합니다.
+2. `index.html`의 `SUPABASE_URL`, `SUPABASE_KEY`(publishable key)를 새 프로젝트 값으로 바꿉니다.

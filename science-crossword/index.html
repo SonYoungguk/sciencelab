@@ -2,12 +2,13 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%230f7a63%22/%3E%3Ctext x=%2216%22 y=%2223%22 font-size=%2218%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22 font-weight=%22700%22%3E과%3C/text%3E%3C/svg%3E">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
 <body>
 <title>과학 용어 퍼즐 배틀</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="과학 교과서 용어로 만든 가로세로 퍼즐을 학생 4명이 실시간으로 함께 푸는 대결 게임">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <style>
@@ -157,6 +158,7 @@ textarea{width:100%;min-height:180px;font-size:13px;line-height:1.6;resize:verti
 </div>
 <div id="layer"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 /* ===================== 단어 세트 ===================== */
 const SETS = {
@@ -350,6 +352,89 @@ function cellMap(pz){
   return m;
 }
 
+/* ===================== Supabase 연결 ===================== */
+const SUPABASE_URL="https://iezzjsrujmirvzrznoly.supabase.co";
+const SUPABASE_KEY="sb_publishable_FKc8PYZY51_82zrm5aBDhA_-f1d2vmn"; // 공개용 키 (브라우저에 노출되어도 되는 키)
+let clockOffset=0; const now=()=>Date.now()+clockOffset;
+function makeDb(){
+  if(!window.supabase) return null;
+  const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false},realtime:{params:{eventsPerSecond:20}}});
+  const fail=e=>{const err=new Error(e?.message||"db error");err.code="unavailable";throw err;};
+  const parse=path=>{const a=path.split("/");return a.length===2?{t:"room",code:a[1]}:a.length===4?{t:"player",code:a[1],pid:a[3]}:{t:"players",code:a[1]};};
+  const snapOf=(row)=>({exists:!!row,data:()=>row?row.data:undefined,metadata:{fromCache:false}});
+  async function getDoc(p){
+    const q=p.t==="room"?sb.from("rooms").select("data").eq("code",p.code):sb.from("players").select("data").eq("code",p.code).eq("pid",p.pid);
+    const {data,error}=await q.maybeSingle(); if(error) fail(error); return data;
+  }
+  async function getPlayers(code){
+    const {data,error}=await sb.from("players").select("pid,data").eq("code",code); if(error) fail(error); return data||[];
+  }
+  // 같은 방을 보는 화면들이 공유하는 실시간 채널 (방마다 1개)
+  const channels={};
+  function channel(code){
+    if(channels[code]) return channels[code];
+    const ch={listeners:new Set(),refetch:()=>ch.listeners.forEach(l=>l.refresh())};
+    ch.sub=sb.channel("room-"+code)
+      .on("postgres_changes",{event:"*",schema:"public",table:"rooms",filter:"code=eq."+code},pl=>ch.listeners.forEach(l=>l.onRoom&&l.onRoom(pl)))
+      .on("postgres_changes",{event:"*",schema:"public",table:"players",filter:"code=eq."+code},pl=>ch.listeners.forEach(l=>l.onPlayer&&l.onPlayer(pl)))
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"players"},pl=>{ if(pl.old&&pl.old.code===code) ch.listeners.forEach(l=>l.onPlayer&&l.onPlayer(pl)); })
+      .subscribe(st=>{ if(st==="SUBSCRIBED") ch.refetch(); });
+    // 학교 네트워크에서 실시간 연결이 끊겨도 따라잡도록 주기적으로 다시 읽는다
+    ch.timer=setInterval(ch.refetch,5000);
+    channels[code]=ch; return ch;
+  }
+  function release(code,l){const ch=channels[code];if(!ch)return;ch.listeners.delete(l);if(!ch.listeners.size){clearInterval(ch.timer);sb.removeChannel(ch.sub);delete channels[code];}}
+  const poke=code=>{const ch=channels[code]; ch&&ch.refetch();};
+  return {
+    doc(path){
+      const p=parse(path);
+      return {
+        get:async()=>snapOf(await getDoc(p)),
+        async set(body){
+          const {error}=p.t==="room"?await sb.from("rooms").upsert({code:p.code,data:body,updated_at:new Date().toISOString()})
+            :await sb.from("players").upsert({code:p.code,pid:p.pid,data:body,updated_at:new Date().toISOString()});
+          if(error) fail(error); poke(p.code);
+        },
+        async update(patch){
+          if(p.t!=="room") throw new Error("update supports rooms only");
+          const {error}=await sb.rpc("merge_room",{p_code:p.code,p_patch:patch}); if(error) fail(error); poke(p.code);
+        },
+        async delete(){
+          const q=p.t==="room"?sb.from("rooms").delete().eq("code",p.code):sb.from("players").delete().eq("code",p.code).eq("pid",p.pid);
+          const {error}=await q; if(error) fail(error); poke(p.code);
+        },
+        onSnapshot(next,onErr){
+          const ch=channel(p.code); let last;
+          const emit=row=>{const key=JSON.stringify(row||null); if(key===last) return; last=key; next(snapOf(row));};
+          const l={refresh:()=>getDoc(p).then(emit).catch(()=>{}),
+            onRoom:pl=>{ if(p.t==="room") emit(pl.eventType==="DELETE"?null:pl.new); }};
+          ch.listeners.add(l); l.refresh();
+          return ()=>release(p.code,l);
+        }
+      };
+    },
+    collection(path){
+      const p=parse(path);
+      const toSnap=rows=>({docs:rows.map(r=>({id:r.pid,exists:true,data:()=>r.data})),size:rows.length,empty:!rows.length,metadata:{fromCache:false}});
+      return {
+        get:async()=>toSnap(await getPlayers(p.code)),
+        onSnapshot(next){
+          const ch=channel(p.code); const map=new Map(); let last;
+          const emit=()=>{const rows=[...map.values()].sort((a,b)=>a.pid<b.pid?-1:1); const key=JSON.stringify(rows); if(key===last) return; last=key; next(toSnap(rows));};
+          const l={refresh:()=>getPlayers(p.code).then(rows=>{map.clear();rows.forEach(r=>map.set(r.pid,r));emit();}).catch(()=>{}),
+            onPlayer:pl=>{ if(pl.eventType==="DELETE") map.delete(pl.old.pid); else map.set(pl.new.pid,{pid:pl.new.pid,data:pl.new.data}); emit(); }};
+          ch.listeners.add(l); l.refresh();
+          return ()=>release(p.code,l);
+        }
+      };
+    },
+    async syncClock(){
+      try{ const t0=Date.now(); const {data,error}=await sb.rpc("server_now_ms"); const t1=Date.now();
+        if(!error&&data) clockOffset=Number(data)-(t0+t1)/2; }catch(e){}
+    }
+  };
+}
+
 /* ===================== 상태 & 유틸 ===================== */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -361,9 +446,7 @@ const S={db:null,role:null,code:null,pid:null,room:null,players:[],unsub:[],sel:
 
 function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2200);}
 function writeErr(e){
-  if(e&&e.code==="invalid_argument"){S.readOnly=true;toast("저장할 권한이 없습니다. 이 페이지를 '참가자(Contributor)' 이상 권한으로 공유받아야 합니다.");}
-  else if(e&&e.code==="quota_exceeded") toast("저장 공간이 가득 찼습니다. 선생님께 알려 주세요.");
-  else toast("저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  toast("저장하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.");
 }
 function queueWrite(fn){S.writeChain=S.writeChain.then(fn).catch(writeErr);return S.writeChain;}
 
@@ -386,7 +469,7 @@ function phase(){
   const r=S.room; if(!r) return "none";
   if(r.status==="lobby") return "lobby";
   if(r.status==="ended") return "ended";
-  const now=Date.now();
+  const now=now();
   if(now<r.startAt) return "countdown";
   if(r.endAt&&now>=r.endAt) return "ended";
   return "playing";
@@ -395,9 +478,10 @@ function phase(){
 /* ===================== 시작 ===================== */
 (async function boot(){
   renderHome();
-  const db=await (window.claude?.use?window.claude.use("db"):Promise.resolve(null));
+  const db=makeDb();
   S.db=db;
-  if(!db){ renderHome("이 화면에서는 실시간 저장소를 쓸 수 없습니다. claude.ai에 로그인한 상태로 이 페이지를 열어 주세요."); return; }
+  if(!db){ renderHome("게임 서버에 연결하지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요."); return; }
+  await db.syncClock(); setInterval(()=>db.syncClock(),60000);
   const saved=store.get("cw-session");
   if(saved){ try{const o=JSON.parse(saved); if(o.code&&o.role){ enterRoom(o.role,o.code,o.pid,o.name); return; }}catch(e){} }
   renderHome();
@@ -429,7 +513,12 @@ function renderHome(warn){
     <p>· 누군가 퍼즐을 모두 맞히면 <b>30초 카운트다운</b>이 시작되고, 시간이 끝나면 게임이 종료됩니다.</p>
     <p>· 순위는 <b>맞힌 단어 수</b>로 정합니다. 같으면 마지막 정답을 먼저 입력한 사람이 앞섭니다.</p>
   </section>`;
-  $("#mkRoom").onclick=()=>{const code=String(1000+Math.floor(Math.random()*9000));enterRoom("teacher",code,null,null,true);};
+  $("#mkRoom").onclick=async()=>{
+    for(let i=0;i<8;i++){ const code=String(1000+Math.floor(Math.random()*9000));
+      const snap=await S.db.doc("rooms/"+code).get().catch(()=>null); if(!snap) return toast("게임 서버에 연결하지 못했습니다.");
+      if(!snap.exists) return enterRoom("teacher",code,null,null,true); }
+    toast("방 번호를 만들지 못했습니다. 다시 눌러 주세요.");
+  };
   $("#join").onclick=async()=>{
     const code=$("#jCode").value.trim(), name=$("#jName").value.trim();
     if(!/^\d{4}$/.test(code)) return toast("방 번호 4자리를 입력해 주세요.");
@@ -441,7 +530,7 @@ function renderHome(warn){
     if(list.length>=MAX_PLAYERS) return toast("이 방은 이미 4명이 찼습니다.");
     const used=new Set(list.map(p=>p.slot)); let slot=0; while(used.has(slot)) slot++;
     const pid=rid();
-    try{ await S.db.doc(`rooms/${code}/players/${pid}`).set({pid,name,slot,joinedAt:Date.now(),gameId:null,solved:{},wrong:0}); }
+    try{ await S.db.doc(`rooms/${code}/players/${pid}`).set({pid,name,slot,joinedAt:now(),gameId:null,solved:{},wrong:0}); }
     catch(e){ return writeErr(e); }
     enterRoom("player",code,pid,name);
   };
@@ -452,7 +541,7 @@ async function enterRoom(role,code,pid,name,create){
   S.unsub.forEach(u=>u()); S.unsub=[]; Object.assign(S,{role,code,pid,name,room:null,players:[],feed:[],lastCounts:{},wasJoined:false,sel:null,skel:null,abarKey:null});
   store.set("cw-session",JSON.stringify({role,code,pid,name}));
   if(create){
-    try{ await S.db.doc("rooms/"+code).set({code,status:"setup",gameId:null,puzzle:null,setName:Object.keys(SETS)[0],startAt:null,endAt:null,firstFinisher:null,createdAt:Date.now()}); }
+    try{ await S.db.doc("rooms/"+code).set({code,status:"setup",gameId:null,puzzle:null,setName:Object.keys(SETS)[0],startAt:null,endAt:null,firstFinisher:null,createdAt:now()}); }
     catch(e){ writeErr(e); return renderHome(); }
   }
   $("#view").innerHTML=`<div class="sheet"><p class="muted">방 ${esc(code)}에 연결하는 중…</p></div>`;
@@ -507,12 +596,12 @@ setInterval(()=>{
 function setFirst(p){
   if(S.room.endAt||S.settingEnd) return;
   S.settingEnd=true;
-  const at=p.finished||Date.now();
+  const at=p.finished||now();
   queueWrite(()=>S.db.doc("rooms/"+S.code).update({endAt:at+END_GRACE,firstFinisher:{pid:p.pid,name:p.name,at}})).finally(()=>S.settingEnd=false);
 }
 function tickTimer(){
   const el=$("#timer"); if(!el||!S.room) return;
-  const ph=phase(), now=Date.now();
+  const ph=phase(), now=now();
   if(ph==="playing"&&S.room.endAt){ el.textContent="종료까지 "+Math.ceil((S.room.endAt-now)/1000)+"초"; el.classList.add("hot"); }
   else if(ph==="playing"){ el.textContent=fmt(now-S.room.startAt); el.classList.remove("hot"); }
   else if(ph==="ended"){ el.textContent="종료"; el.classList.remove("hot"); }
@@ -585,8 +674,8 @@ function renderTeacher(){
   </div>`;
   const box=$("#gbox"); box.innerHTML=gridHTML(pz,{showAll:S.showAnswers,cs:cellSize(pz,box)});
   $("#ansBtn").onclick=()=>{S.showAnswers=!S.showAnswers;render();};
-  $("#endSoon")&&($("#endSoon").onclick=()=>queueWrite(()=>S.db.doc("rooms/"+S.code).update({endAt:Date.now()+END_GRACE})));
-  $("#endNow")&&($("#endNow").onclick=()=>queueWrite(()=>S.db.doc("rooms/"+S.code).update({endAt:Date.now(),status:"ended"})));
+  $("#endSoon")&&($("#endSoon").onclick=()=>queueWrite(()=>S.db.doc("rooms/"+S.code).update({endAt:now()+END_GRACE})));
+  $("#endNow")&&($("#endNow").onclick=()=>queueWrite(()=>S.db.doc("rooms/"+S.code).update({endAt:now(),status:"ended"})));
   $("#again")&&($("#again").onclick=()=>{S.draftPuzzle=room.puzzle;queueWrite(()=>S.db.doc("rooms/"+S.code).update({status:"lobby",startAt:null,endAt:null,firstFinisher:null}));});
 }
 const ALL="__all", CUSTOM="__custom";
@@ -633,7 +722,7 @@ function renderTeacherSetup(){
       const list=parseList(ta.value); if(list.length<2) return toast("용어를 2개 이상 입력해 주세요.");
       const puzzle=generate(sampleWords(list,+nSel.value));
       const name=sel.value===CUSTOM?"직접 입력한 용어":sel.value===ALL?"전체 단원":sel.value;
-      queueWrite(()=>S.db.doc("rooms/"+S.code).set({...S.room,status:"playing",gameId:rid(),puzzle,setName:name,startAt:Date.now()+3500,endAt:null,firstFinisher:null}));
+      queueWrite(()=>S.db.doc("rooms/"+S.code).set({...S.room,status:"playing",gameId:rid(),puzzle,setName:name,startAt:now()+3500,endAt:null,firstFinisher:null}));
     };
   }
   updateSetupLive();
@@ -741,7 +830,7 @@ function submitAnswer(){
   const save=()=>{const body={pid:S.pid,name:me.name,slot:me.slot,joinedAt:me.joinedAt,gameId:m.gameId,solved:{...m.solved},wrong:m.wrong};
     return queueWrite(()=>S.db.doc(`rooms/${S.code}/players/${S.pid}`).set(body));};
   if(val===w.w){
-    const now=Date.now(); m.solved[w.id]=now; inp.value="";
+    const now=now(); m.solved[w.id]=now; inp.value="";
     const auto=autoComplete(room.puzzle,m.solved,now); S.popWords=[w.id,...auto];
     const done=Object.keys(m.solved).length===room.puzzle.words.length;
     toast(done?"모두 맞혔습니다!":auto.length?`정답! 다른 정답으로 다 채워진 ${auto.map(id=>{const x=room.puzzle.words[id];return x.n+"번 "+(x.d==="a"?"가로":"세로");}).join(", ")}도 함께 맞힘`:"정답!");
