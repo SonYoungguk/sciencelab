@@ -469,9 +469,9 @@ function phase(){
   const r=S.room; if(!r) return "none";
   if(r.status==="lobby") return "lobby";
   if(r.status==="ended") return "ended";
-  const now=now();
-  if(now<r.startAt) return "countdown";
-  if(r.endAt&&now>=r.endAt) return "ended";
+  const tnow=now();
+  if(tnow<r.startAt) return "countdown";
+  if(r.endAt&&tnow>=r.endAt) return "ended";
   return "playing";
 }
 
@@ -601,12 +601,12 @@ function setFirst(p){
 }
 function tickTimer(){
   const el=$("#timer"); if(!el||!S.room) return;
-  const ph=phase(), now=now();
-  if(ph==="playing"&&S.room.endAt){ el.textContent="종료까지 "+Math.ceil((S.room.endAt-now)/1000)+"초"; el.classList.add("hot"); }
-  else if(ph==="playing"){ el.textContent=fmt(now-S.room.startAt); el.classList.remove("hot"); }
+  const ph=phase(), tnow=now();
+  if(ph==="playing"&&S.room.endAt){ el.textContent="종료까지 "+Math.ceil((S.room.endAt-tnow)/1000)+"초"; el.classList.add("hot"); }
+  else if(ph==="playing"){ el.textContent=fmt(tnow-S.room.startAt); el.classList.remove("hot"); }
   else if(ph==="ended"){ el.textContent="종료"; el.classList.remove("hot"); }
   else el.textContent="--:--";
-  const cd=$("#countNum"); if(cd&&ph==="countdown") cd.textContent=Math.ceil((S.room.startAt-now)/1000);
+  const cd=$("#countNum"); if(cd&&ph==="countdown") cd.textContent=Math.ceil((S.room.startAt-tnow)/1000);
 }
 
 /* ===================== 렌더 ===================== */
@@ -830,8 +830,8 @@ function submitAnswer(){
   const save=()=>{const body={pid:S.pid,name:me.name,slot:me.slot,joinedAt:me.joinedAt,gameId:m.gameId,solved:{...m.solved},wrong:m.wrong};
     return queueWrite(()=>S.db.doc(`rooms/${S.code}/players/${S.pid}`).set(body));};
   if(val===w.w){
-    const now=now(); m.solved[w.id]=now; inp.value="";
-    const auto=autoComplete(room.puzzle,m.solved,now); S.popWords=[w.id,...auto];
+    const tnow=now(); m.solved[w.id]=tnow; inp.value="";
+    const auto=autoComplete(room.puzzle,m.solved,tnow); S.popWords=[w.id,...auto];
     const done=Object.keys(m.solved).length===room.puzzle.words.length;
     toast(done?"모두 맞혔습니다!":auto.length?`정답! 다른 정답으로 다 채워진 ${auto.map(id=>{const x=room.puzzle.words[id];return x.n+"번 "+(x.d==="a"?"가로":"세로");}).join(", ")}도 함께 맞힘`:"정답!");
     const t=m.solved[w.id];
