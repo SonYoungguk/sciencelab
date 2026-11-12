@@ -50,3 +50,21 @@ revoke execute on function public.cleanup_old_rooms() from public, anon, authent
 create trigger rooms_cleanup after insert on public.rooms for each statement execute function public.cleanup_old_rooms();
 
 alter publication supabase_realtime add table public.rooms, public.players;
+
+-- 단원별 용어 (선생님 화면에서 양식으로 올리거나 삭제). 기본 용어는 첫 실행 때 페이지가 넣는다.
+create table public.terms (
+  id bigint generated always as identity primary key,
+  grade text not null check (grade in ('중1','중2','중3')),
+  unit text not null check (char_length(unit) between 1 and 60),
+  term text not null check (char_length(term) between 2 and 20),
+  clue text not null check (char_length(clue) between 1 and 300),
+  builtin boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (grade, unit, term)
+);
+create index terms_grade_unit on public.terms(grade, unit);
+alter table public.terms enable row level security;
+create policy "terms open read" on public.terms for select to anon, authenticated using (true);
+create policy "terms open insert" on public.terms for insert to anon, authenticated with check (true);
+create policy "terms open update" on public.terms for update to anon, authenticated using (true) with check (true);
+create policy "terms open delete" on public.terms for delete to anon, authenticated using (true);
