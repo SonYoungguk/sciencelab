@@ -934,8 +934,10 @@ async function loadTerms(force){
       const {data,error}=await sb.from("terms").select("grade,chapter,unit,term,clue,builtin").order("id").range(from,from+999);
       if(error) throw error; all=all.concat(data); if(data.length<1000) break;
     }
-    if(!all.some(r=>r.builtin)){ // 처음 한 번: 기본 용어 넣기
-      const {error}=await sb.from("terms").upsert(parseDefaultTerms(),{onConflict:"grade,unit,term",ignoreDuplicates:true});
+    if(!all.some(r=>r.builtin)){ // 처음 한 번: 아직 용어가 하나도 없는 학년에만 기본 용어 넣기
+      const have=new Set(all.map(r=>r.grade)), seed=parseDefaultTerms().filter(t=>!have.has(t.grade));
+      if(!seed.length){ TB.rows=all; TB.loading=null; return all; }
+      const {error}=await sb.from("terms").upsert(seed,{onConflict:"grade,unit,term",ignoreDuplicates:true});
       if(!error) return loadTerms(true);
     }
     TB.rows=all; TB.loading=null; return all;
