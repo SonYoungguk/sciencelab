@@ -68,3 +68,6 @@ create policy "terms open read" on public.terms for select to anon, authenticate
 create policy "terms open insert" on public.terms for insert to anon, authenticated with check (true);
 create policy "terms open update" on public.terms for update to anon, authenticated using (true) with check (true);
 create policy "terms open delete" on public.terms for delete to anon, authenticated using (true);
+
+-- 대단원 (선택). 선생님 화면에서 대단원별로 소단원을 묶어 보여 준다.
+alter table public.terms add column chapter text not null default '' check (char_length(chapter) <= 60);

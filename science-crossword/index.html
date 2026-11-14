@@ -165,6 +165,12 @@ textarea{width:100%;min-height:180px;font-size:18px;line-height:1.5;resize:verti
 .rank .meta{font-size:16px;color:var(--muted)}
 .toast{position:fixed;left:50%;transform:translateX(-50%) rotate(-1.5deg);bottom:calc(22px + env(safe-area-inset-bottom,0px));background:var(--hi);color:var(--ink);padding:10px 18px;border-radius:2px;font-weight:700;font-size:20px;z-index:30;max-width:calc(100% - 32px);box-shadow:2px 4px 0 rgba(0,0,0,.12)}
 .preview .cw .c{cursor:default}
+.unitlist{display:flex;flex-direction:column;gap:6px}
+.chapter{display:flex;flex-direction:column;gap:8px;padding:6px 0 10px}
+.chapter+.chapter{border-top:2px dotted var(--rule);padding-top:14px}
+.chhead{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;font-weight:700;font-size:22px;cursor:pointer}
+.chhead input{width:22px;height:22px;accent-color:var(--accent);margin:0}
+.chhead .mono{font-size:17px;font-weight:400}
 .units{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
 .unit{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:8px 14px;cursor:pointer;min-width:0;font-size:20px}
 .unit::before{border-width:2px;border-color:var(--rule);border-radius:var(--r3)}
@@ -925,7 +931,7 @@ async function loadTerms(force){
   TB.loading=(async()=>{
     const sb=S.db.sb; let all=[];
     for(let from=0;;from+=1000){
-      const {data,error}=await sb.from("terms").select("grade,unit,term,clue,builtin").order("id").range(from,from+999);
+      const {data,error}=await sb.from("terms").select("grade,chapter,unit,term,clue,builtin").order("id").range(from,from+999);
       if(error) throw error; all=all.concat(data); if(data.length<1000) break;
     }
     if(!all.some(r=>r.builtin)){ // 처음 한 번: 기본 용어 넣기
@@ -938,25 +944,35 @@ async function loadTerms(force){
 }
 function unitsOf(rows){
   const m=new Map();
-  rows.forEach(r=>{const k=r.grade+"|"+r.unit; if(!m.has(k)) m.set(k,{grade:r.grade,unit:r.unit,n:0,custom:false}); const u=m.get(k); u.n++; if(!r.builtin) u.custom=true;});
-  return [...m.values()].sort((a,b)=>a.grade.localeCompare(b.grade)||a.unit.localeCompare(b.unit,"ko"));
+  rows.forEach(r=>{const k=r.grade+"|"+r.unit; if(!m.has(k)) m.set(k,{grade:r.grade,unit:r.unit,chapter:"",n:0,custom:false}); const u=m.get(k); u.n++; if(!r.builtin) u.custom=true; if(!u.chapter&&r.chapter) u.chapter=r.chapter;});
+  return [...m.values()].sort((a,b)=>a.grade.localeCompare(b.grade)||a.unit.localeCompare(b.unit,"ko",{numeric:true}));
+}
+/* 학년 안에서 대단원별로 묶기. 대단원 순서는 처음 저장된 순서를 따른다 */
+function chaptersOf(units,rows){
+  const order=new Map(); (rows||[]).forEach(r=>{const c=r.chapter||""; if(!order.has(r.grade+"|"+c)) order.set(r.grade+"|"+c,order.size);});
+  const g=new Map();
+  units.forEach(u=>{const k=u.grade+"|"+(u.chapter||""); if(!g.has(k)) g.set(k,{grade:u.grade,chapter:u.chapter||"",units:[]}); g.get(k).units.push(u);});
+  return [...g.values()].sort((a,b)=>a.grade.localeCompare(b.grade)||(a.chapter===""?1:0)-(b.chapter===""?1:0)||(order.get(a.grade+"|"+a.chapter)??0)-(order.get(b.grade+"|"+b.chapter)??0));
 }
 /* ---------- 양식 내려받기 / 올리기 ---------- */
-const HEAD=["학년","단원","용어","설명"];
+const HEAD=["학년","대단원","소단원","용어","설명"];
 function downloadTemplate(){
   if(!window.XLSX) return toast("엑셀 기능을 불러오지 못했습니다. 새로고침해 주세요.");
   const wb=XLSX.utils.book_new();
-  const ws=XLSX.utils.aoa_to_sheet([HEAD,["중2","물질의 구성","원소","더 이상 다른 물질로 분해되지 않는, 물질을 이루는 기본 성분"],["중2","물질의 구성","분자","물질의 성질을 가지는 가장 작은 입자"],["중3","별과 우주","광년","빛이 1년 동안 이동한 거리"]]);
-  ws["!cols"]=[{wch:6},{wch:24},{wch:16},{wch:60}];
+  const ws=XLSX.utils.aoa_to_sheet([HEAD,["중1","Ⅴ. 힘의 작용","Ⅴ-1. 힘의 표현과 평형","합력","물체에 둘 이상의 힘이 동시에 작용할 때, 이와 같은 효과를 나타내는 하나의 힘"],["중1","Ⅴ. 힘의 작용","Ⅴ-2. 여러 가지 힘","탄성력","변형된 물체가 원래 모양으로 돌아가려는 힘"],["중1","Ⅶ. 태양계","Ⅶ-2. 지구와 달","황도","태양이 연주 운동하면서 별자리를 배경으로 지나가는 길"]]);
+  ws["!cols"]=[{wch:6},{wch:20},{wch:28},{wch:16},{wch:60}];
   XLSX.utils.book_append_sheet(wb,ws,"용어");
   const help=XLSX.utils.aoa_to_sheet([["작성 방법"],
     ["1. '용어' 시트의 2번째 줄부터 한 줄에 용어 하나씩 적습니다. 예시 3줄은 지우고 적어도 됩니다."],
     ["2. 학년: 중1, 중2, 중3 중 하나 (1, 1학년처럼 적어도 됩니다)"],
-    ["3. 단원: 원하는 단원 이름. 같은 이름끼리 한 단원으로 묶입니다. 새 이름을 적으면 새 단원이 생깁니다."],
-    ["4. 용어: 퍼즐 칸에 들어갈 정답. 2~20글자, 띄어쓰기는 자동으로 지워집니다."],
-    ["5. 설명: 학생에게 보여 줄 문제(힌트)."],
-    ["6. 같은 학년·단원에 이미 있는 용어를 다시 올리면 설명이 새 내용으로 바뀝니다."],
-    ["7. 저장한 뒤 선생님 화면의 '파일 올리기'로 올립니다. (.xlsx, .xls, .csv)"]]);
+    ["3. 대단원: 소단원을 묶는 큰 단원 이름 (예: Ⅴ. 힘의 작용). 비워 두어도 됩니다."],
+    ["   선생님 화면에서 대단원을 누르면 그 안의 소단원이 한꺼번에 선택되고, 소단원을 하나씩 골라 출제할 수도 있습니다."],
+    ["   소단원 이름 앞에 번호(예: Ⅴ-1.)를 붙이면 번호 순서대로 보입니다."],
+    ["4. 소단원: 출제 단위가 되는 단원 이름. 같은 이름끼리 한 단원으로 묶입니다."],
+    ["5. 용어: 퍼즐 칸에 들어갈 정답. 2~20글자, 띄어쓰기는 자동으로 지워집니다."],
+    ["6. 설명: 학생에게 보여 줄 문제(힌트)."],
+    ["7. 같은 학년·소단원에 이미 있는 용어를 다시 올리면 설명과 대단원이 새 내용으로 바뀝니다."],
+    ["8. 저장한 뒤 선생님 화면의 '파일 올리기'로 올립니다. (.xlsx, .xls, .csv)"]]);
   help["!cols"]=[{wch:90}];
   XLSX.utils.book_append_sheet(wb,help,"작성 방법");
   XLSX.writeFile(wb,"과학용어퍼즐_양식.xlsx");
@@ -970,17 +986,19 @@ async function parseUpload(file){
   let hi=rows.findIndex(r=>r.map(c=>String(c).trim()).includes("용어"));
   const head=hi>=0?rows[hi].map(c=>String(c).trim()):HEAD;
   const col=k=>head.indexOf(k);
-  const ci={g:col("학년"),u:col("단원"),t:col("용어"),c:col("설명")};
-  if(Object.values(ci).some(x=>x<0)) throw new Error("첫 줄에 '학년, 단원, 용어, 설명' 제목이 있어야 합니다. 양식을 내려받아 사용해 주세요.");
+  const ci={g:col("학년"),u:col("소단원")>=0?col("소단원"):col("단원"),t:col("용어"),c:col("설명")};
+  if(Object.values(ci).some(x=>x<0)) throw new Error("첫 줄에 '학년, 대단원, 소단원, 용어, 설명' 제목이 있어야 합니다. 양식을 내려받아 사용해 주세요.");
+  ci.ch=col("대단원");
   const ok=[],errors=[],seen=new Set();
   rows.slice(hi+1).forEach((r,i)=>{
     const line=hi+2+i, cell=k=>String(r[ci[k]]??"").trim();
     if(!cell("g")&&!cell("u")&&!cell("t")&&!cell("c")) return;
+    const chapter=ci.ch>=0?cell("ch").replace(/\s+/g," ").slice(0,60):"";
     const grade=normGrade(cell("g")), unit=cell("u").replace(/\s+/g," "), term=cell("t").replace(/\s+/g,""), clue=cell("c");
-    const why=!grade?"학년은 중1·중2·중3 중 하나여야 합니다":!unit?"단원이 비어 있습니다":unit.length>60?"단원 이름이 너무 깁니다":Array.from(term).length<2?"용어는 2글자 이상이어야 합니다":Array.from(term).length>20?"용어는 20글자 이하여야 합니다":!clue?"설명이 비어 있습니다":clue.length>300?"설명은 300자 이하여야 합니다":null;
+    const why=!grade?"학년은 중1·중2·중3 중 하나여야 합니다":!unit?"소단원이 비어 있습니다":unit.length>60?"소단원 이름이 너무 깁니다":Array.from(term).length<2?"용어는 2글자 이상이어야 합니다":Array.from(term).length>20?"용어는 20글자 이하여야 합니다":!clue?"설명이 비어 있습니다":clue.length>300?"설명은 300자 이하여야 합니다":null;
     if(why){ errors.push(`${line}번째 줄: ${why}`); return; }
-    const k=grade+"|"+unit+"|"+term; if(seen.has(k)){ errors.push(`${line}번째 줄: '${term}'이(가) 같은 단원에 두 번 있습니다`); return; }
-    seen.add(k); ok.push({grade,unit,term,clue});
+    const k=grade+"|"+unit+"|"+term; if(seen.has(k)){ errors.push(`${line}번째 줄: '${term}'이(가) 같은 소단원에 두 번 있습니다`); return; }
+    seen.add(k); ok.push({grade,chapter,unit,term,clue});
   });
   return {ok,errors};
 }
@@ -1017,7 +1035,7 @@ function renderTeacherSetup(){
           <select id="nSel"><option value="10">10개</option><option value="15">15개</option><option value="20">20개</option><option value="0">고른 단원 전체</option></select></label>
         <div class="row" style="gap:8px"><button class="ghost" id="allOn">모두 선택</button><button class="ghost" id="allOff">모두 해제</button></div>
       </div>
-      <div id="unitList" class="units"><p class="muted">단원 목록을 불러오는 중…</p></div>
+      <div id="unitList" class="unitlist"><p class="muted">단원 목록을 불러오는 중…</p></div>
       <details id="customBox"><summary>이번 판만 직접 입력하기 (저장되지 않음)</summary>
         <div class="stack" style="margin-top:8px"><span class="label">한 줄에 하나씩 · 용어 | 설명. 여기에 적으면 위에서 고른 단원 대신 이 목록으로 출제합니다.</span>
         <textarea id="words" spellcheck="false" placeholder="광합성 | 빛에너지를 이용해 양분을 만드는 과정"></textarea></div>
@@ -1054,7 +1072,7 @@ function renderTeacherSetup(){
         const units=unitsOf(ok.map(r=>({...r,builtin:false})));
         box.innerHTML=`<div class="upbox stack">
           <b>${esc(f.name)}: 용어 ${ok.length}개를 읽었습니다${errors.length?` · ${errors.length}줄은 건너뜀`:""}</b>
-          ${units.length?`<p style="font-size:17px">${units.map(u=>`${esc(u.grade)} · ${esc(u.unit)} (${u.n}개)`).join("<br>")}</p>`:""}
+          ${units.length?`<p style="font-size:17px">${units.map(u=>`${esc(u.grade)} · ${u.chapter?esc(u.chapter)+" › ":""}${esc(u.unit)} (${u.n}개)`).join("<br>")}</p>`:""}
           ${errors.length?`<details><summary class="warn">건너뛴 줄 보기</summary><p style="font-size:16px">${errors.slice(0,50).map(esc).join("<br>")}${errors.length>50?"<br>…":""}</p></details>`:""}
           <div class="row">${ok.length?`<button class="primary" id="upSave">단원 목록에 저장</button>`:""}<button class="ghost" id="upCancel">취소</button></div>
         </div>`;
@@ -1084,11 +1102,20 @@ function renderTeacherSetup(){
 function visibleUnits(){ const g=$("#gSel")?.value||"중1"; return unitsOf(TB.rows||[]).filter(u=>g==="all"||u.grade===g); }
 function drawUnits(){
   const box=$("#unitList"); if(!box||!TB.rows) return;
-  const us=visibleUnits(), g=$("#gSel").value;
-  box.innerHTML=us.length?us.map(u=>{const k=u.grade+"|"+u.unit;return `<label class="unit ${S.picked.has(k)?"on":""}"><input type="checkbox" data-u="${esc(k)}" ${S.picked.has(k)?"checked":""}><span>${g==="all"?`<span class="muted">${esc(u.grade)}</span> `:""}${esc(u.unit)}</span><span class="muted mono">${u.n}</span></label>`;}).join("")
-    :`<p class="muted">이 학년에는 저장된 단원이 없습니다. 아래에서 양식을 채워 올려 주세요.</p>`;
-  box.querySelectorAll("input[data-u]").forEach(cb=>cb.onchange=()=>{cb.checked?S.picked.add(cb.dataset.u):S.picked.delete(cb.dataset.u); cb.closest(".unit").classList.toggle("on",cb.checked); updatePick();});
-  updatePick();
+  const us=visibleUnits(), g=$("#gSel").value, groups=chaptersOf(us,TB.rows);
+  const named=groups.some(x=>x.chapter);
+  const unitHTML=u=>{const k=u.grade+"|"+u.unit;return `<label class="unit ${S.picked.has(k)?"on":""}"><input type="checkbox" data-u="${esc(k)}" ${S.picked.has(k)?"checked":""}><span>${g==="all"&&!named?`<span class="muted">${esc(u.grade)}</span> `:""}${esc(u.unit)}</span><span class="muted mono">${u.n}</span></label>`;};
+  box.innerHTML=!us.length?`<p class="muted">이 학년에는 저장된 단원이 없습니다. 아래에서 양식을 채워 올려 주세요.</p>`
+    :groups.map((grp,i)=>{
+      const title=grp.chapter||(named?"그 밖의 단원":"");
+      const n=grp.units.reduce((a,u)=>a+u.n,0);
+      return `<div class="chapter">${title?`<label class="chhead"><input type="checkbox" data-ch="${i}"><span>${g==="all"?`<span class="muted">${esc(grp.grade)}</span> `:""}${esc(title)}</span><span class="muted mono">소단원 ${grp.units.length}개 · 용어 ${n}개</span></label>`:""}<div class="units">${grp.units.map(unitHTML).join("")}</div></div>`;
+    }).join("");
+  const sync=()=>box.querySelectorAll("input[data-ch]").forEach(cb=>{const ks=groups[+cb.dataset.ch].units.map(u=>u.grade+"|"+u.unit), on=ks.filter(k=>S.picked.has(k)).length;
+    cb.checked=on===ks.length; cb.indeterminate=on>0&&on<ks.length; cb.closest(".chhead").classList.toggle("on",on>0);});
+  box.querySelectorAll("input[data-u]").forEach(cb=>cb.onchange=()=>{cb.checked?S.picked.add(cb.dataset.u):S.picked.delete(cb.dataset.u); cb.closest(".unit").classList.toggle("on",cb.checked); sync(); updatePick();});
+  box.querySelectorAll("input[data-ch]").forEach(cb=>cb.onchange=()=>{groups[+cb.dataset.ch].units.forEach(u=>{const k=u.grade+"|"+u.unit; cb.checked?S.picked.add(k):S.picked.delete(k);}); drawUnits();});
+  sync(); updatePick();
 }
 function currentPick(){
   const custom=parseList(S.customText||"");
@@ -1096,19 +1123,19 @@ function currentPick(){
   const g=$("#gSel")?.value||"all";
   const keys=[...S.picked].filter(k=>g==="all"||k.startsWith(g+"|")), on=new Set(keys), seen=new Set(), list=[];
   (TB.rows||[]).forEach(r=>{ if(on.has(r.grade+"|"+r.unit)&&!seen.has(r.term)){ seen.add(r.term); list.push({w:r.term.replace(/\s+/g,""),clue:r.clue}); } });
-  const names=keys.map(k=>k.replace("|"," · "));
+  const names=keys.sort((x,y)=>x.localeCompare(y,"ko",{numeric:true})).map(k=>k.split("|")[1]);
   return {list,label:names.length?names[0]+(names.length>1?` 외 ${names.length-1}개 단원`:""):"",count:keys.length};
 }
 function updatePick(){
   const info=$("#pickInfo"); if(!info) return; const p=currentPick();
-  info.textContent=p.label==="직접 입력한 용어"?`직접 입력 ${p.list.length}개`:`${p.count}개 단원 · 용어 ${p.list.length}개`;
+  info.textContent=p.label==="직접 입력한 용어"?`직접 입력 ${p.list.length}개`:`소단원 ${p.count}개 · 용어 ${p.list.length}개`;
   updateSetupLive();
 }
 function drawManage(){
   const box=$("#manage"); if(!box||!TB.rows) return;
   const us=unitsOf(TB.rows);
   box.innerHTML=GRADES.map(g=>{const list=us.filter(u=>u.grade===g); if(!list.length) return "";
-    return `<div class="stack" style="gap:4px"><span class="label">${g}</span>${list.map(u=>`<div class="mrow"><span>${esc(u.unit)} <span class="muted mono">(${u.n})</span>${u.custom?` <span class="tag">추가함</span>`:""}</span><button class="ghost kick" data-del="${esc(u.grade+"|"+u.unit)}">삭제</button></div>`).join("")}</div>`;}).join("");
+    return `<div class="stack" style="gap:4px"><span class="label">${g}</span>${list.map(u=>`<div class="mrow"><span>${u.chapter?`<span class="muted">${esc(u.chapter)} ›</span> `:""}${esc(u.unit)} <span class="muted mono">(${u.n})</span>${u.custom?` <span class="tag">추가함</span>`:""}</span><button class="ghost kick" data-del="${esc(u.grade+"|"+u.unit)}">삭제</button></div>`).join("")}</div>`;}).join("");
   box.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
     const [g,u]=b.dataset.del.split("|");
     if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="한 번 더 누르면 삭제"; b.classList.add("danger"); setTimeout(()=>{if(b.isConnected){b.dataset.armed="";b.textContent="삭제";b.classList.remove("danger");}},4000); return; }
