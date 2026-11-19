@@ -231,61 +231,102 @@ const clamp = (v,lo,hi) => Math.min(hi, Math.max(lo, v));
 
 /* ---------- 도안 ----------
    도안 = 여러 조각의 실루엣 − 틈 선(GAP mm 너비).
-   틈 선으로 잘린 덩어리 하나하나가 색칠할 수 있는 '칸'이 된다. */
+   틈 선으로 잘린 덩어리 하나하나가 색칠할 수 있는 '칸'이 된다.
+   곡선은 모두 점으로 잘게 나눠 두어서, 실루엣과 틈 선이 같은 곡선을 따라간다. */
 const f2 = n => (Math.round(n*100)/100).toString();
 function polyD(pts){ return 'M'+pts.map(p => f2(p[0])+' '+f2(p[1])).join('L')+'Z'; }
-function starD(n,R,r,cx,cy){ const pts=[]; for(let i=0;i<n*2;i++){ const a=-Math.PI/2+i*Math.PI/n, q=i%2?r:R; pts.push([cx+q*Math.cos(a), cy+q*Math.sin(a)]); } return polyD(pts); }
-function ellD(cx,cy,rx,ry,rot){ const pts=[]; for(let i=0;i<48;i++){ const t=i/48*Math.PI*2, x=rx*Math.cos(t), y=ry*Math.sin(t); pts.push([cx+x*Math.cos(rot)-y*Math.sin(rot), cy+x*Math.sin(rot)+y*Math.cos(rot)]); } return polyD(pts); }
-function circD(cx,cy,r){ return ellD(cx,cy,r,r,0); }
-function zig(x0,x1,step,ya,yb){ const p=[]; let k=0; for(let x=x0;x<=x1+0.01;x+=step,k++) p.push([x, k%2?yb:ya]); return p; }
+function qpts(p0,p1,p2,n=12){ const o=[]; for(let i=1;i<=n;i++){ const t=i/n, u=1-t; o.push([u*u*p0[0]+2*u*t*p1[0]+t*t*p2[0], u*u*p0[1]+2*u*t*p1[1]+t*t*p2[1]]); } return o; }
+function cpts(p0,p1,p2,p3,n=28){ const o=[]; for(let i=1;i<=n;i++){ const t=i/n, u=1-t; o.push([u*u*u*p0[0]+3*u*u*t*p1[0]+3*u*t*t*p2[0]+t*t*t*p3[0], u*u*u*p0[1]+3*u*u*t*p1[1]+3*u*t*t*p2[1]+t*t*t*p3[1]]); } return o; }
+const curve = (p0,p1,p2,p3) => [p0, ...cpts(p0,p1,p2,p3)];
+function scallop(x0,x1,y,n,sag){ const o=[[x0,y]], st=(x1-x0)/n; for(let k=0;k<n;k++){ const a=x0+k*st, b=a+st; o.push(...qpts([a,y],[(a+b)/2,y+2*sag],[b,y],10)); } return o; } // 아래로 처지는 물결
+function roundRect(x,y,w,h,r){ return `M${x+r} ${y}H${x+w-r}Q${x+w} ${y} ${x+w} ${y+r}V${y+h-r}Q${x+w} ${y+h} ${x+w-r} ${y+h}H${x+r}Q${x} ${y+h} ${x} ${y+h-r}V${y+r}Q${x} ${y} ${x+r} ${y}Z`; }
+function ellD(cx,cy,rx,ry){ const pts=[]; for(let i=0;i<48;i++){ const t=i/48*Math.PI*2; pts.push([cx+rx*Math.cos(t), cy+ry*Math.sin(t)]); } return polyD(pts); }
+function roundStar(cx,cy,R,r,round){ // 끝이 둥근 별
+  const pts=[]; for(let i=0;i<10;i++){ const a=-Math.PI/2+i*Math.PI/5, q=i%2?r:R; pts.push([cx+q*Math.cos(a), cy+q*Math.sin(a)]); }
+  const out=[];
+  for(let i=0;i<10;i++){ const p=pts[i];
+    if(i%2){ out.push(p); continue; }
+    const a=pts[(i+9)%10], b=pts[(i+1)%10], s=[p[0]+(a[0]-p[0])*round, p[1]+(a[1]-p[1])*round], e=[p[0]+(b[0]-p[0])*round, p[1]+(b[1]-p[1])*round];
+    out.push(s, ...qpts(s,p,e,8)); }
+  return polyD(out);
+}
+function xAtY(poly,y){ for(let i=1;i<poly.length;i++){ const [x0,y0]=poly[i-1], [x1,y1]=poly[i]; if((y-y0)*(y-y1) <= 0 && y0 !== y1) return x0+(x1-x0)*(y-y0)/(y1-y0); } return null; }
+function yAtX(poly,x){ for(let i=1;i<poly.length;i++){ const [x0,y0]=poly[i-1], [x1,y1]=poly[i]; if((x-x0)*(x-x1) <= 0 && x0 !== x1) return y0+(y1-y0)*(x-x0)/(x1-x0); } return null; }
+function wave(x0,x1,y,amp,waves){ const o=[]; for(let x=x0;x<=x1+0.01;x+=1.5) o.push([x, y+amp*Math.sin((x-x0)/(x1-x0)*Math.PI*2*waves)]); return o; }
 
-const TREE_BODY = [[50,27],[73,56],[63,56],[85,84],[74,84],[97,114],[3,114],[26,84],[15,84],[37,56],[27,56]];
+/* 전나무: 끝이 둥근 별 · 치마처럼 퍼지고 아래가 물결인 세 층 · 줄기 */
+const TIERS = [{yt:27,yb:53,w:24,n:3,tw:0},{yt:43,yb:81,w:36,n:4,tw:7},{yt:68,yb:111,w:47,n:5,tw:10}];
+function tierPts(t){
+  const L=[50-t.tw,t.yt], R=[50+t.tw,t.yt], BL=[50-t.w,t.yb], BR=[50+t.w,t.yb], h=t.yb-t.yt;
+  return [R, ...qpts(R,[50+t.w*0.45,t.yb-h*0.28],BR), ...scallop(50+t.w,50-t.w,t.yb,t.n,3.2).slice(1), ...qpts(BL,[50-t.w*0.45,t.yb-h*0.28],L)];
+}
+const tierLine = t => [[-6,t.yb], ...scallop(50-t.w,50+t.w,t.yb,t.n,3.2), [106,t.yb]];
+const GARLANDS = [[59,7],[88,8]].map(([y,s]) => ({top:curve([-6,y-3],[30,y+s],[70,y+s],[106,y+3]), bot:curve([-6,y+5],[30,y+8+s],[70,y+8+s],[106,y+11])})); // 층마다 하나씩 걸친 띠
+/* 선물 상자: 물방울 모양 리본 고리 · 매듭 · 둥근 뚜껑과 상자 */
+const LOOP_L = 'M50 25C44 13 28 3 18 8C8 13 11 27 25 29C35 30 44 28 50 25Z';
+const LOOP_R = 'M70 25C76 13 92 3 102 8C112 13 109 27 95 29C85 30 76 28 70 25Z';
+/* 양말: 물결 모양 털 커프 · 부드러운 몸통 · 곡선 뒤꿈치와 발끝 */
+const CUFF_EDGE = scallop(70,8,27,5,2.8);
+const HEEL = curve([0,90],[16,94],[28,108],[31,132]);
+const TOE = curve([75,78],[66,94],[66,113],[77,132]);
+
 const TPL = {
   tree: {
-    name:'전나무', tw:100, th:132, orient:'p',
-    parts:[starD(5,12,5.2,50,13), polyD(TREE_BODY), 'M41 117H59V132H41Z'],
-    sep:[[[34,25],[66,25]], [[-5,115.5],[105,115.5]]],
+    name:'전나무', tw:100, th:136, orient:'p',
+    parts:[roundStar(50,13.5,13,5.8,0.24), ...TIERS.map(t => polyD(tierPts(t))), 'M44 119H56L58 133Q58 136 55 136H45Q42 136 42 133Z'],
+    sep:[[[36,25.4],[64,25.4]], [[-6,117.2],[106,117.2]]],
     pats:[
-      {name:'층', lines:[[[-5,56],[105,56]], [[-5,84],[105,84]]]},
-      {name:'반반 층', lines:[[[-5,56],[105,56]], [[-5,84],[105,84]], [[50,27],[50,114]]]},
-      {name:'사선 줄', lines:[14,32,50,68].map(c => [[-5,-5*0.55+c],[105,105*0.55+c]])},
+      {name:'층', lines:[tierLine(TIERS[0]), tierLine(TIERS[1])]},
+      {name:'반반 층', lines:[tierLine(TIERS[0]), tierLine(TIERS[1]), [[50,26],[50,116]]]},
+      {name:'리본 띠', lines:[tierLine(TIERS[0]), tierLine(TIERS[1]), ...GARLANDS.flatMap(g => [g.top, g.bot])]},
     ],
-    def(rep,k,pi){ if(rep[1] < 24) return 'y'; if(rep[1] > 116) return 'r'; return pi === 2 ? (k%2 ? 'y' : 'g') : (pi === 1 && rep[0] > 50 ? 'c' : 'g'); },
-  },
-  gift: {
-    name:'선물 상자', tw:120, th:112, orient:'l',
-    parts:[ellD(35,15,17,9,-0.35), ellD(85,15,17,9,0.35), circD(60,19,8), 'M4 33H116V50H4Z', 'M12 53H108V112H12Z'],
-    sep:[[[-5,30],[125,30]], [[-5,51.5],[125,51.5]], [[51,-3],[51,29]], [[69,-3],[69,29]]],
-    pats:[
-      {name:'세로 리본', lines:[[[52,30],[52,114]], [[68,30],[68,114]]]},
-      {name:'십자 리본', lines:[[[52,30],[52,51.5]], [[68,30],[68,51.5]],
-        [[52,51.5],[52,74]], [[52,88],[52,114]], [[68,51.5],[68,74]], [[68,88],[68,114]],
-        [[7,74],[52,74]], [[68,74],[113,74]], [[7,88],[52,88]], [[68,88],[113,88]]]},
-      {name:'체크', lines:[[[40,30],[40,51.5]], [[80,30],[80,51.5]], [[44,51.5],[44,114]], [[76,51.5],[76,114]], [[7,82],[113,82]]]},
-    ],
+    sp: rep => rep[1] < 25.4 || rep[1] > 117.2,
     def(rep,k,pi){
       const [x,y] = rep;
-      if(y < 30) return (x > 51 && x < 69) ? 'y' : 'g';
-      if(pi === 2) return k%2 ? 'b' : 'r';
-      const rib = (x > 52 && x < 68) || (pi === 1 && y > 74 && y < 88 && y > 51.5);
+      if(y < 25.4) return 'y';
+      if(y > 117.2) return 'r';
+      if(pi === 1) return x > 50 ? 'c' : 'g';
+      if(pi === 2 && GARLANDS.some(g => y > yAtX(g.top,x) && y < yAtX(g.bot,x))) return 'r';
+      return 'g';
+    },
+  },
+  gift: {
+    name:'선물 상자', tw:120, th:120, orient:'l',
+    parts:[LOOP_L, LOOP_R, ellD(60,22.5,8.5,7.5), roundRect(2,34,116,19,4), 'M10 56H110V114Q110 120 104 120H16Q10 120 10 114Z'],
+    sep:[[[-5,31.8],[125,31.8]], [[-5,54.5],[125,54.5]], [[51,-3],[51,32]], [[69,-3],[69,32]]],
+    pats:[
+      {name:'세로 리본', lines:[[[52,31.8],[52,123]], [[68,31.8],[68,123]]]},
+      {name:'십자 리본', lines:[[[52,31.8],[52,54.5]], [[68,31.8],[68,54.5]],
+        [[52,54.5],[52,80]], [[52,94],[52,123]], [[68,54.5],[68,80]], [[68,94],[68,123]],
+        [[7,80],[52,80]], [[68,80],[113,80]], [[7,94],[52,94]], [[68,94],[113,94]]]},
+      {name:'사선 줄무늬', lines:[-50,-26,-2,22,46,70,94].map(c => [[c+3,57.5],[c+70,124.5]])},
+    ],
+    sp: rep => rep[1] < 31.8,
+    def(rep,k,pi){
+      const [x,y] = rep;
+      if(y < 31.8) return (x > 51 && x < 69) ? 'y' : 'g';
+      if(pi === 2) return y < 54.5 ? 'r' : (k%2 ? 'r' : 'y');
+      const rib = (x > 52 && x < 68) || (pi === 1 && y > 80 && y < 94);
       return rib ? 'y' : 'r';
     },
   },
   sock: {
-    name:'양말', tw:92, th:124, orient:'p',
-    parts:['M12 2H64Q68 2 68 6V20Q68 24 64 24H12Q8 24 8 20V6Q8 2 12 2Z',
-           'M14 27H60V77C60 81 62 83 66 83H72C84 83 92 92 92 102C92 114 83 122 71 122H34C20 122 10 112 10 99C10 90 14 86 14 80Z'],
-    sep:[[[-5,25.5],[97,25.5]]],
+    name:'양말', tw:96, th:128, orient:'p',
+    parts:['M12 2H66Q70 2 70 6V27' + polyD(CUFF_EDGE).replace(/^M[^L]*L/,'L').replace(/Z$/,'') + 'V6Q8 2 12 2Z',
+           'M14 20H62V72C62 80 66 84 74 85C88 87 95 95 95 105C95 117 86 125 74 125H40C22 125 10 114 10 98C10 88 14 82 14 74Z'],
+    sep:[[[-4,27], ...scallop(8,70,27,5,2.8), [100,27]]],
     pats:[
-      {name:'뒤꿈치·발끝', lines:[[[4,92],[36,130]], [[74,76],[74,128]]]},
-      {name:'줄무늬', lines:[[[4,92],[36,130]], [[74,76],[74,128]], [[5,40],[69,40]], [[5,53],[69,53]], [[5,66],[69,66]]]},
-      {name:'지그재그', lines:[[[4,92],[36,130]], [[74,76],[74,128]], zig(4,68,8,42,50), zig(4,68,8,62,70)]},
+      {name:'뒤꿈치·발끝', lines:[HEEL, TOE]},
+      {name:'줄무늬', lines:[HEEL, TOE, ...[42,55,68].map(y => curve([2,y],[25,y+4],[45,y+4],[70,y]))]},
+      {name:'물결', lines:[HEEL, TOE, wave(2,70,46,3,2.5), wave(2,70,64,3,2.5)]},
     ],
+    sp: rep => rep[1] < 29,
     def(rep,k,pi){
       const [x,y] = rep;
-      if(y < 25.5) return 'w';
-      if(x > 74) return 'g';
-      if(y > 92 + (38/32)*(x-4)) return 'g';
+      if(y < 29) return 'w';
+      const tx = xAtY(TOE,y), hx = xAtY(HEEL,y);
+      if(tx != null && x > tx) return 'g';
+      if(hx != null && x < hx) return 'g';
       return pi === 0 ? 'r' : (k%2 ? 'w' : 'r');
     },
   },
@@ -354,13 +395,13 @@ function refCells(tk, pi){
 }
 function defaultColors(tk, pi){
   const t = TPL[tk], cells = refCells(tk, pi), out = {}; let k = 0;
-  cells.forEach((c,i) => { const special = (tk==='tree' && (c.rep[1]<24 || c.rep[1]>116)) || (tk==='gift' && c.rep[1]<30) || (tk==='sock' && c.rep[1]<25.5);
+  cells.forEach((c,i) => { const special = t.sp(c.rep);
     const col = t.def(c.rep, special ? 0 : k, pi); if(!special) k++; if(col !== 'w') out[i] = col; });
   return out;
 }
 
 /* ---------- 상태 ---------- */
-const DRAFT_KEY = 'cmy-postcard-draft-v4';
+const DRAFT_KEY = 'cmy-postcard-draft-v5';
 let state = { v:4, n:'', t:'tree', p:0, o:'p', size:92, pos:[1,1], col:{} };
 const ckey = () => state.t + state.p;
 function colorsNow(){ const k = ckey(); if(!state.col[k]) state.col[k] = defaultColors(state.t, state.p); return state.col[k]; }
